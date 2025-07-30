@@ -2,14 +2,37 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+
 import { Map as MapIcon, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
+// Use state to hold Leaflet module
+import { useRef } from 'react';
+
 // Dynamically import Leaflet and CSS only on client side
-let L: any = null;
-if (typeof window !== 'undefined') {
-  L = require('leaflet');
-  require('leaflet/dist/leaflet.css');
-}
+const useLeaflet = () => {
+  const leafletRef = useRef<any>(null);
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      if (typeof window !== 'undefined') {
+        await import('leaflet/dist/leaflet.css');
+        const leafletModule = await import('leaflet');
+        if (isMounted) {
+          leafletRef.current = leafletModule;
+          // Fix Leaflet default markers only on client side
+          delete (leafletModule.Icon.Default.prototype as any)._getIconUrl;
+          leafletModule.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+          });
+        }
+      }
+    })();
+    return () => { isMounted = false; };
+  }, []);
+  return leafletRef.current;
+};
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -83,14 +106,25 @@ const KNOWN_CIRCUITS: Record<string, {
   },
 };
 
+
 export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMapProps) {
-  const [mapRef, setMapRef] = useState<L.Map | null>(null);
+  const [mapRef, setMapRef] = useState<any>(null);
   const [detectedCircuit, setDetectedCircuit] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const leaflet = useLeaflet();
 
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+    // Setup marker icons only after Leaflet is loaded
+    if (leaflet) {
+      delete (leaflet.Icon.Default.prototype as any)._getIconUrl;
+      leaflet.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+      });
+    }
+  }, [leaflet]);
 
   // Extract GPS coordinates and detect circuit
   const { coordinates, center, lapPaths } = useMemo(() => {

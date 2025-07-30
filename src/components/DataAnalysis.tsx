@@ -13,19 +13,31 @@ const Line = dynamic(
 // Type for Chart.js options (fallback for SSR)
 type ChartOptionsType = any;
 
-// Initialize Chart.js on client side only
-if (typeof window !== 'undefined') {
-  const chartModule = require('chart.js');
-  chartModule.Chart.register(
-    chartModule.CategoryScale,
-    chartModule.LinearScale,
-    chartModule.PointElement,
-    chartModule.LineElement,
-    chartModule.Title,
-    chartModule.Tooltip,
-    chartModule.Legend
-  );
-}
+// Dynamically register Chart.js only on client side
+import { useRef } from 'react';
+const useChartJS = () => {
+  const chartRef = useRef<any>(null);
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      if (typeof window !== 'undefined') {
+        const chartModule = await import('chart.js');
+        chartModule.Chart.register(
+          chartModule.CategoryScale,
+          chartModule.LinearScale,
+          chartModule.PointElement,
+          chartModule.LineElement,
+          chartModule.Title,
+          chartModule.Tooltip,
+          chartModule.Legend
+        );
+        if (isMounted) chartRef.current = chartModule;
+      }
+    })();
+    return () => { isMounted = false; };
+  }, []);
+  return chartRef.current;
+};
 
 interface DataAnalysisProps {
   data: any[];
@@ -43,11 +55,13 @@ interface LapData {
   data: any[];
 }
 
+
 export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAnalysisProps) {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [laps, setLaps] = useState<LapData[]>([]);
   const [bestTheoreticalLap, setBestTheoreticalLap] = useState<number | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const chartJS = useChartJS();
 
   useEffect(() => {
     setIsMounted(true);
@@ -263,8 +277,9 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
         </div>
       </div>
 
+
       {/* Chart */}
-      {chartData && isMounted && (
+      {chartData && isMounted && chartJS && (
         <div className="bg-white/5 rounded-lg p-4">
           <div className="h-96">
             <Line data={chartData} options={chartOptions} />
