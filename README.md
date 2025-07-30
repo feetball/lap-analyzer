@@ -1,36 +1,190 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lap Analyzer Pro
+
+A comprehensive race car data analysis tool built with Next.js that processes CSV files from data loggers, performs automatic lap detection using GPS coordinates, and provides detailed telemetry analysis.
+
+## Features
+
+### Core Functionality
+- **CSV File Upload**: Drag-and-drop CSV files from your data logger
+- **Automatic Circuit Detection**: Recognizes major US racing circuits from GPS coordinates
+- **Lap Detection**: Automatically detects laps using start/finish line crossings
+- **Interactive Data Analysis**: Select and visualize multiple telemetry channels
+- **Circuit Visualization**: Satellite view with lap overlays using OpenStreetMap
+- **Lap Comparison**: Compare multiple laps with synchronized data views
+- **Best Theoretical Lap**: Calculate optimal lap times from sector data
+
+### Advanced Features
+- **Session Management**: Save and load previous sessions for comparison
+- **Database Storage**: Local SQLite database for offline access
+- **Real-time Charts**: Interactive telemetry charts with Chart.js
+- **GPS Mapping**: Leaflet-based mapping with circuit overlays
+- **Multi-channel Analysis**: Support for speed, RPM, throttle, brake pressure, and more
+
+### Supported Circuits
+- Road America
+- Laguna Seca
+- Circuit of the Americas
+- Watkins Glen
+- Sebring International Raceway
+- Daytona International Speedway
+- VIRginia International Raceway
+
+## Technology Stack
+
+- **Frontend**: Next.js 14+, React, TypeScript
+- **Styling**: Tailwind CSS with custom gradient themes
+- **Charts**: Chart.js with react-chartjs-2
+- **Mapping**: Leaflet with react-leaflet
+- **Database**: SQLite with better-sqlite3
+- **CSV Processing**: Papa Parse
+- **Icons**: Lucide React
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
 
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <repository-url>
+cd lap-analyzer
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Start the development server:
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Learn More
+### Building for Production
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## CSV File Format
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Your CSV file should include the following columns:
 
-## Deploy on Vercel
+### Required Columns
+- **Latitude**: GPS latitude (lat, latitude, etc.)
+- **Longitude**: GPS longitude (lon, lng, longitude, etc.)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Optional Columns
+- **Speed**: Vehicle speed
+- **RPM**: Engine RPM
+- **Throttle**: Throttle position (0-100%)
+- **Brake**: Brake pressure
+- **Gear**: Current gear
+- **Engine Temp**: Engine temperature
+- **Oil Pressure**: Oil pressure
+- **Fuel Level**: Fuel level
+- **Time/Timestamp**: Time data for accurate lap timing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Usage Guide
+
+### 1. Upload Data
+- Navigate to the "Data Upload" tab
+- Drag and drop your CSV file or click to browse
+- The system will validate GPS coordinates and parse the data
+
+### 2. Analyze Data
+- Switch to the "Analysis" tab
+- Select telemetry channels to display
+- Choose specific laps or view the entire session
+- View lap times and performance metrics
+
+### 3. View Circuit Map
+- Go to the "Circuit Map" tab
+- See your GPS track overlaid on satellite imagery
+- Select individual laps to highlight
+- View start/finish line markers for known circuits
+
+### 4. Compare Laps
+- Use the "Lap Compare" tab
+- Select multiple laps for comparison
+- Choose metrics to compare (speed, RPM, etc.)
+- View performance deltas and statistics
+
+### 5. Save Sessions
+- Click "Save Session" to store data locally
+- Access saved sessions in the "Sessions" tab
+- Load previous sessions for multi-session analysis
+
+## Development
+
+### Project Structure
+```
+src/
+├── app/                 # Next.js app router pages
+│   ├── api/            # API routes for database operations
+│   └── page.tsx        # Main application page
+├── components/         # React components
+│   ├── FileUpload.tsx  # CSV file upload component
+│   ├── DataAnalysis.tsx # Telemetry analysis and charts
+│   ├── CircuitMap.tsx  # GPS mapping component
+│   ├── LapComparison.tsx # Lap comparison tools
+│   └── SessionManager.tsx # Session storage management
+└── utils/              # Utility functions
+    ├── raceAnalysis.ts # Lap detection and circuit identification
+    └── database.ts     # SQLite database operations
+```
+
+### Key Components
+
+- **FileUpload**: Handles CSV file parsing and validation
+- **DataAnalysis**: Main telemetry visualization with interactive charts
+- **CircuitMap**: GPS track visualization with Leaflet maps
+- **LapComparison**: Side-by-side lap analysis and comparison
+- **SessionManager**: Database operations for saving/loading sessions
+
+### Database Schema
+
+The application uses SQLite with the following tables:
+
+- **sessions**: Stores session metadata and raw CSV data
+- **laps**: Stores individual lap data and metrics
+
+## Inspiration
+
+This project draws inspiration from professional race analysis tools:
+- **MoTeC i2**: Professional telemetry analysis software
+- **AiM Race Studio**: Data logging and analysis platform
+- **Circuit Tools**: Track mapping and analysis tools
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For support, feature requests, or bug reports, please open an issue on GitHub.
+
+## Roadmap
+
+- [ ] Real-time data streaming support
+- [ ] Advanced sector timing analysis
+- [ ] Weather data integration
+- [ ] Car setup comparison tools
+- [ ] Export capabilities (PDF reports, etc.)
+- [ ] Mobile responsive design
+- [ ] Cloud database support
+- [ ] Team collaboration features
