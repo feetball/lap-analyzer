@@ -1,14 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Upload, Activity, Map, BarChart3, Clock, Trophy, Database, Save } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
-import DataAnalysis from '@/components/DataAnalysis';
-import CircuitMap from '@/components/CircuitMap';
-import LapComparison from '@/components/LapComparison';
-import SessionManager from '@/components/SessionManager';
 import SaveSessionDialog from '@/components/SaveSessionDialog';
 import { detectCircuit, extractGPSCoordinates } from '@/utils/raceAnalysis';
+
+// Dynamic imports to prevent SSR issues
+const DataAnalysis = dynamic(() => import('@/components/DataAnalysis'), { ssr: false });
+const CircuitMap = dynamic(() => import('@/components/CircuitMap'), { ssr: false });
+const LapComparison = dynamic(() => import('@/components/LapComparison'), { ssr: false });
+const SessionManager = dynamic(() => import('@/components/SessionManager'), { ssr: false });
 
 export default function Home() {
   const [csvData, setCsvData] = useState<any[]>([]);

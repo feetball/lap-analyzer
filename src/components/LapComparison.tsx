@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { ChartOptions } from 'chart.js';
 import { GitCompare, Trophy, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 // Dynamically import Chart component to avoid SSR issues
@@ -10,6 +9,9 @@ const Line = dynamic(
   () => import('react-chartjs-2').then((mod) => mod.Line),
   { ssr: false }
 );
+
+// Type for Chart.js options (fallback for SSR)
+type ChartOptionsType = any;
 
 interface LapComparisonProps {
   data: any[];
@@ -109,7 +111,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
     };
   }, [selectedLaps, laps, comparisonMetric]);
 
-  const chartOptions: ChartOptions<'line'> = {
+  const chartOptions: ChartOptionsType = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {

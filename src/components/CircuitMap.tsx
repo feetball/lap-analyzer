@@ -2,9 +2,14 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { Map as MapIcon, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+
+// Dynamically import Leaflet and CSS only on client side
+let L: any = null;
+if (typeof window !== 'undefined') {
+  L = require('leaflet');
+  require('leaflet/dist/leaflet.css');
+}
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(

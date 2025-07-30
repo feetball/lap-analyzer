@@ -2,17 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  ChartOptions,
-} from 'chart.js';
 import { Timer, TrendingUp, Settings, Play } from 'lucide-react';
 
 // Dynamically import Chart component to avoid SSR issues
@@ -21,15 +10,22 @@ const Line = dynamic(
   { ssr: false }
 );
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+// Type for Chart.js options (fallback for SSR)
+type ChartOptionsType = any;
+
+// Initialize Chart.js on client side only
+if (typeof window !== 'undefined') {
+  const chartModule = require('chart.js');
+  chartModule.Chart.register(
+    chartModule.CategoryScale,
+    chartModule.LinearScale,
+    chartModule.PointElement,
+    chartModule.LineElement,
+    chartModule.Title,
+    chartModule.Tooltip,
+    chartModule.Legend
+  );
+}
 
 interface DataAnalysisProps {
   data: any[];
@@ -145,7 +141,7 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
     };
   }, [data, selectedColumns, selectedLap, laps]);
 
-  const chartOptions: ChartOptions<'line'> = {
+  const chartOptions: ChartOptionsType = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
