@@ -1,0 +1,35 @@
+# Dockerfile for Railway deployment with JSON database (no native modules)
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for potential needs
+RUN apk add --no-cache \
+    libc6-compat
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies with clean install
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Create data directory for JSON storage
+RUN mkdir -p /data
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV USE_JSON_DB=true
+ENV RAILWAY_VOLUME_MOUNT_PATH=/data
+
+# Start the application
+CMD ["npm", "start"]

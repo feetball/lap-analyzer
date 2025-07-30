@@ -1,12 +1,14 @@
-# Use Node.js LTS
-FROM node:18-alpine
+# Use Node.js 20 LTS (better-sqlite3 requires Node 20+)
+FROM node:20-alpine
 
-# Install dependencies for native modules
+# Install dependencies for native modules and Python distutils
 RUN apk add --no-cache \
     python3 \
+    py3-setuptools \
     make \
     g++ \
-    sqlite
+    sqlite \
+    git
 
 # Set working directory
 WORKDIR /app

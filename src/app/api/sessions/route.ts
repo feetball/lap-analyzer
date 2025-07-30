@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRaceDatabase } from '@/utils/database';
+import { getRaceDatabase } from '@/utils/database-adapter';
 
 export async function GET() {
   try {
-    const db = getRaceDatabase();
+    const db = await getRaceDatabase();
     const sessions = db.getAllSessions();
     return NextResponse.json(sessions);
   } catch (error) {
@@ -20,9 +20,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const db = getRaceDatabase();
+    const db = await getRaceDatabase();
     const sessionId = db.createSession({ name, date, circuit, data });
-    
+
     return NextResponse.json({ id: sessionId, message: 'Session created successfully' });
   } catch (error) {
     console.error('Error creating session:', error);

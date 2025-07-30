@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRaceDatabase } from '@/utils/database';
+import { getRaceDatabase } from '@/utils/database-adapter';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 });
     }
 
-    const db = getRaceDatabase();
+    const db = await getRaceDatabase();
     const session = db.getSession(sessionId);
     
     if (!session) {
@@ -43,7 +43,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 });
     }
 
-    const db = getRaceDatabase();
+    const db = await getRaceDatabase();
     const success = db.deleteSession(sessionId);
     
     if (!success) {
