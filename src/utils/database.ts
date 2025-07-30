@@ -1,6 +1,7 @@
 // Database utilities for storing race session data
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
 export interface SessionData {
   id?: number;
@@ -29,8 +30,8 @@ class RaceDatabase {
     const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(process.cwd(), 'data');
     
     // Ensure data directory exists
-    if (!require('fs').existsSync(dataDir)) {
-      require('fs').mkdirSync(dataDir, { recursive: true });
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
     }
     
     const dbPath = path.join(dataDir, 'race_data.db');
