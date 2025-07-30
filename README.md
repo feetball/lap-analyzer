@@ -39,11 +39,27 @@ A comprehensive race car data analysis tool built with Next.js that processes CS
 - **CSV Processing**: Papa Parse
 - **Icons**: Lucide React
 
-## Getting Started
+## Deployment
 
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
+### Railway (Recommended)
+
+The easiest way to deploy this application:
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template)
+
+**Quick Deploy Steps:**
+1. Fork this repository
+2. Sign up for [Railway](https://railway.app)
+3. Connect your GitHub repository
+4. Deploy automatically with included `Dockerfile`
+
+See [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) for detailed instructions.
+
+### Other Deployment Options
+
+- **Vercel**: `vercel --prod`
+- **Docker**: `docker build -t lap-analyzer . && docker run -p 3000:3000 lap-analyzer`
+- **Traditional VPS**: Follow the local setup instructions
 
 ### Installation
 

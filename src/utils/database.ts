@@ -25,8 +25,15 @@ class RaceDatabase {
   private db: Database.Database;
 
   constructor() {
-    // Initialize database
-    const dbPath = path.join(process.cwd(), 'data', 'race_data.db');
+    // Initialize database with Railway-friendly path
+    const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(process.cwd(), 'data');
+    
+    // Ensure data directory exists
+    if (!require('fs').existsSync(dataDir)) {
+      require('fs').mkdirSync(dataDir, { recursive: true });
+    }
+    
+    const dbPath = path.join(dataDir, 'race_data.db');
     this.db = new Database(dbPath);
     this.initializeTables();
   }

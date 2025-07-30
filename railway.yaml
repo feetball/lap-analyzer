@@ -1,0 +1,14 @@
+version: "3"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      http_path: /
+      initial_delay_seconds: 30
+      period_seconds: 10
