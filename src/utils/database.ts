@@ -1,5 +1,4 @@
-// Database utilities for storing race session data
-import Database from 'better-sqlite3';
+// Database utilities for storing race session data (Vercel-compatible JSON storage)
 import path from 'path';
 import fs from 'fs';
 
@@ -22,227 +21,211 @@ export interface LapRecord {
   data: any[];
 }
 
+interface DatabaseSchema {
+  sessions: SessionData[];
+  laps: LapRecord[];
+  nextId: number;
+}
+
 class RaceDatabase {
-  private db: Database.Database;
+  private dataPath: string;
+  private data: DatabaseSchema = {
+    sessions: [],
+    laps: [],
+    nextId: 1
+  };
 
   constructor() {
-    // Initialize database with Railway-friendly path
-    const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(process.cwd(), 'data');
+    // Use a temporary directory that works on Vercel
+    const dataDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'data');
     
-    // Ensure data directory exists
-    if (!fs.existsSync(dataDir)) {
+    // Ensure data directory exists (only in non-Vercel environments)
+    if (!process.env.VERCEL && !fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     
-    const dbPath = path.join(dataDir, 'race_data.db');
-    this.db = new Database(dbPath);
-    this.initializeTables();
+    this.dataPath = path.join(dataDir, 'race_data.json');
+    this.loadData();
   }
 
-  private initializeTables() {
-    // Create sessions table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        date TEXT NOT NULL,
-        circuit TEXT,
-        data TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+  private loadData() {
+    try {
+      if (fs.existsSync(this.dataPath)) {
+        const rawData = fs.readFileSync(this.dataPath, 'utf8');
+        this.data = JSON.parse(rawData);
+      } else {
+        this.data = {
+          sessions: [],
+          laps: [],
+          nextId: 1
+        };
+        this.saveData();
+      }
+    } catch (error) {
+      console.warn('Failed to load database, using in-memory storage:', error);
+      this.data = {
+        sessions: [],
+        laps: [],
+        nextId: 1
+      };
+    }
+  }
 
-    // Create laps table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS laps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
-        lap_number INTEGER NOT NULL,
-        lap_time REAL NOT NULL,
-        max_speed REAL NOT NULL,
-        avg_speed REAL NOT NULL,
-        data TEXT NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES sessions (id)
-      )
-    `);
+  private saveData() {
+    try {
+      // On Vercel, we can't persist to disk, so just keep in memory
+      if (!process.env.VERCEL) {
+        fs.writeFileSync(this.dataPath, JSON.stringify(this.data, null, 2));
+      }
+    } catch (error) {
+      console.warn('Failed to save database:', error);
+    }
+  }
 
-    // Create index for faster queries
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_laps_session_id ON laps (session_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_circuit ON sessions (circuit);
-    `);
+  private getNextId(): number {
+    return this.data.nextId++;
   }
 
   // Session methods
   createSession(session: Omit<SessionData, 'id' | 'createdAt'>): number {
-    const stmt = this.db.prepare(`
-      INSERT INTO sessions (name, date, circuit, data)
-      VALUES (?, ?, ?, ?)
-    `);
+    const id = this.getNextId();
+    const newSession: SessionData = {
+      ...session,
+      id,
+      createdAt: new Date().toISOString()
+    };
     
-    const result = stmt.run(
-      session.name,
-      session.date,
-      session.circuit,
-      JSON.stringify(session.data)
-    );
-    
-    return result.lastInsertRowid as number;
+    this.data.sessions.push(newSession);
+    this.saveData();
+    return id;
   }
 
   getSession(id: number): SessionData | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM sessions WHERE id = ?
-    `);
-    
-    const row = stmt.get(id) as any;
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      name: row.name,
-      date: row.date,
-      circuit: row.circuit,
-      data: JSON.parse(row.data),
-      createdAt: row.created_at,
-    };
+    return this.data.sessions.find(session => session.id === id) || null;
   }
 
   getAllSessions(): SessionData[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM sessions ORDER BY created_at DESC
-    `);
-    
-    const rows = stmt.all() as any[];
-    
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      date: row.date,
-      circuit: row.circuit,
-      data: JSON.parse(row.data),
-      createdAt: row.created_at,
-    }));
+    return [...this.data.sessions].sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.date).getTime();
+      const dateB = new Date(b.createdAt || b.date).getTime();
+      return dateB - dateA; // Most recent first
+    });
   }
 
   getSessionsByCircuit(circuit: string): SessionData[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM sessions WHERE circuit = ? ORDER BY created_at DESC
-    `);
-    
-    const rows = stmt.all(circuit) as any[];
-    
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      date: row.date,
-      circuit: row.circuit,
-      data: JSON.parse(row.data),
-      createdAt: row.created_at,
-    }));
+    return this.data.sessions
+      .filter(session => session.circuit === circuit)
+      .sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.date).getTime();
+        const dateB = new Date(b.createdAt || b.date).getTime();
+        return dateB - dateA;
+      });
   }
 
   deleteSession(id: number): boolean {
-    const stmt = this.db.prepare(`DELETE FROM sessions WHERE id = ?`);
-    const result = stmt.run(id);
-    return result.changes > 0;
+    const initialLength = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter(session => session.id !== id);
+    
+    // Also delete associated laps
+    this.data.laps = this.data.laps.filter(lap => lap.sessionId !== id);
+    
+    if (this.data.sessions.length < initialLength) {
+      this.saveData();
+      return true;
+    }
+    return false;
   }
 
   // Lap methods
   createLap(lap: Omit<LapRecord, 'id'>): number {
-    const stmt = this.db.prepare(`
-      INSERT INTO laps (session_id, lap_number, lap_time, max_speed, avg_speed, data)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    const id = this.getNextId();
+    const newLap: LapRecord = {
+      ...lap,
+      id
+    };
     
-    const result = stmt.run(
-      lap.sessionId,
-      lap.lapNumber,
-      lap.lapTime,
-      lap.maxSpeed,
-      lap.avgSpeed,
-      JSON.stringify(lap.data)
-    );
-    
-    return result.lastInsertRowid as number;
+    this.data.laps.push(newLap);
+    this.saveData();
+    return id;
   }
 
   getLapsBySession(sessionId: number): LapRecord[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM laps WHERE session_id = ? ORDER BY lap_number
-    `);
-    
-    const rows = stmt.all(sessionId) as any[];
-    
-    return rows.map(row => ({
-      id: row.id,
-      sessionId: row.session_id,
-      lapNumber: row.lap_number,
-      lapTime: row.lap_time,
-      maxSpeed: row.max_speed,
-      avgSpeed: row.avg_speed,
-      data: JSON.parse(row.data),
-    }));
+    return this.data.laps
+      .filter(lap => lap.sessionId === sessionId)
+      .sort((a, b) => a.lapNumber - b.lapNumber);
   }
 
   getBestLapByCircuit(circuit: string): LapRecord | null {
-    const stmt = this.db.prepare(`
-      SELECT l.* FROM laps l
-      JOIN sessions s ON l.session_id = s.id
-      WHERE s.circuit = ?
-      ORDER BY l.lap_time ASC
-      LIMIT 1
-    `);
+    const sessions = this.getSessionsByCircuit(circuit);
+    const sessionIds = sessions.map(s => s.id!);
     
-    const row = stmt.get(circuit) as any;
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      sessionId: row.session_id,
-      lapNumber: row.lap_number,
-      lapTime: row.lap_time,
-      maxSpeed: row.max_speed,
-      avgSpeed: row.avg_speed,
-      data: JSON.parse(row.data),
-    };
+    const laps = this.data.laps.filter(lap => sessionIds.includes(lap.sessionId));
+    
+    if (laps.length === 0) return null;
+    
+    return laps.reduce((best, current) => 
+      current.lapTime < best.lapTime ? current : best
+    );
   }
 
   // Analytics methods
   getSessionStats(sessionId: number) {
-    const stmt = this.db.prepare(`
-      SELECT 
-        COUNT(*) as total_laps,
-        MIN(lap_time) as best_lap_time,
-        MAX(lap_time) as worst_lap_time,
-        AVG(lap_time) as avg_lap_time,
-        MAX(max_speed) as max_speed_overall,
-        AVG(avg_speed) as avg_speed_overall
-      FROM laps
-      WHERE session_id = ?
-    `);
+    const laps = this.getLapsBySession(sessionId);
     
-    return stmt.get(sessionId) as any;
+    if (laps.length === 0) {
+      return {
+        total_laps: 0,
+        best_lap_time: null,
+        worst_lap_time: null,
+        avg_lap_time: null,
+        max_speed_overall: null,
+        avg_speed_overall: null
+      };
+    }
+
+    const lapTimes = laps.map(l => l.lapTime);
+    const maxSpeeds = laps.map(l => l.maxSpeed);
+    const avgSpeeds = laps.map(l => l.avgSpeed);
+
+    return {
+      total_laps: laps.length,
+      best_lap_time: Math.min(...lapTimes),
+      worst_lap_time: Math.max(...lapTimes),
+      avg_lap_time: lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length,
+      max_speed_overall: Math.max(...maxSpeeds),
+      avg_speed_overall: avgSpeeds.reduce((a, b) => a + b, 0) / avgSpeeds.length
+    };
   }
 
   getCircuitStats(circuit: string) {
-    const stmt = this.db.prepare(`
-      SELECT 
-        COUNT(DISTINCT s.id) as total_sessions,
-        COUNT(l.id) as total_laps,
-        MIN(l.lap_time) as best_lap_time,
-        AVG(l.lap_time) as avg_lap_time,
-        MAX(l.max_speed) as max_speed_overall
-      FROM sessions s
-      LEFT JOIN laps l ON s.id = l.session_id
-      WHERE s.circuit = ?
-    `);
-    
-    return stmt.get(circuit) as any;
+    const sessions = this.getSessionsByCircuit(circuit);
+    const sessionIds = sessions.map(s => s.id!);
+    const laps = this.data.laps.filter(lap => sessionIds.includes(lap.sessionId));
+
+    if (laps.length === 0) {
+      return {
+        total_sessions: sessions.length,
+        total_laps: 0,
+        best_lap_time: null,
+        avg_lap_time: null,
+        max_speed_overall: null
+      };
+    }
+
+    const lapTimes = laps.map(l => l.lapTime);
+    const maxSpeeds = laps.map(l => l.maxSpeed);
+
+    return {
+      total_sessions: sessions.length,
+      total_laps: laps.length,
+      best_lap_time: Math.min(...lapTimes),
+      avg_lap_time: lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length,
+      max_speed_overall: Math.max(...maxSpeeds)
+    };
   }
 
   close() {
-    this.db.close();
+    // No need to close anything in JSON-based storage
   }
 }
 

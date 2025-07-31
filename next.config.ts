@@ -5,17 +5,14 @@ const nextConfig: NextConfig = {
   compress: true,
   // Handle external packages
   transpilePackages: ['leaflet', 'react-leaflet'],
-  // Configure webpack for better-sqlite3
+  // Configure webpack for Vercel compatibility
   webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Handle better-sqlite3 on server side
-      config.externals.push('better-sqlite3');
-    }
+    // No special configuration needed for JSON-based storage
     return config;
   },
   // Environment configuration
   env: {
-    DATABASE_PATH: process.env.DATABASE_PATH || '/app/data/race_data.db',
+    DATA_PATH: process.env.DATA_PATH || '/tmp/race_data.json',
   },
 };
 
