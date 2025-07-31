@@ -123,10 +123,39 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
       setBestTheoreticalLap(bestTime);
     }
 
-    // Auto-select some columns
+    // Auto-select default telemetry columns
     if (selectedColumns.length === 0) {
-      const autoSelect = availableColumns.slice(0, 3);
-      setSelectedColumns(autoSelect);
+      const defaultChannels = [];
+      
+      // Look for TPS (Throttle Position Sensor)
+      const tpsChannel = availableColumns.find(col => 
+        col.toLowerCase().includes('tps') || 
+        col.includes('TPS (%)') ||
+        col.toLowerCase().includes('throttle')
+      );
+      if (tpsChannel) defaultChannels.push(tpsChannel);
+      
+      // Look for Brake Pressure
+      const brakeChannel = availableColumns.find(col => 
+        col.toLowerCase().includes('brake') && col.toLowerCase().includes('pressure') ||
+        col.includes('Brake Pressure (%)')
+      );
+      if (brakeChannel) defaultChannels.push(brakeChannel);
+      
+      // Look for Speed
+      const speedChannel = availableColumns.find(col => 
+        col.toLowerCase().includes('speed') ||
+        col.toLowerCase() === 'spd' ||
+        col.toLowerCase().includes('velocity')
+      );
+      if (speedChannel) defaultChannels.push(speedChannel);
+      
+      // If we couldn't find the specific channels, fall back to first 3
+      if (defaultChannels.length === 0) {
+        defaultChannels.push(...availableColumns.slice(0, 3));
+      }
+      
+      setSelectedColumns(defaultChannels);
     }
   }, [data, availableColumns, selectedColumns.length]);
 
