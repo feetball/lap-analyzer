@@ -15,7 +15,15 @@ const useLeaflet = () => {
     let isMounted = true;
     (async () => {
       if (typeof window !== 'undefined') {
-        await import('leaflet/dist/leaflet.css');
+        // Load CSS by creating a link element instead of importing
+        const cssLoaded = document.querySelector('link[href*="leaflet.css"]');
+        if (!cssLoaded) {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          document.head.appendChild(link);
+        }
+        
         const leafletModule = await import('leaflet');
         if (isMounted) {
           leafletRef.current = leafletModule;
@@ -58,12 +66,7 @@ const Popup = dynamic(
 
 // Fix Leaflet default markers only on client side
 if (typeof window !== 'undefined') {
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  });
+  // This will be handled in the useLeaflet hook instead
 }
 
 interface CircuitMapProps {
