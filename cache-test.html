@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LocalStorage Cache Test</title>
+</head>
+<body>
+    <h1>Testing Lap Analyzer Cache</h1>
+    <div id="results"></div>
+    
+    <script>
+        const CACHE_KEYS = {
+            DATA: 'lap-analyzer-cached-data',
+            SELECTED_LAP: 'lap-analyzer-selected-lap',
+            SELECTED_LAPS: 'lap-analyzer-selected-laps',
+            ACTIVE_TAB: 'lap-analyzer-active-tab',
+            FILE_NAME: 'lap-analyzer-file-name',
+            TIMESTAMP: 'lap-analyzer-cache-timestamp'
+        };
+
+        function log(message) {
+            console.log(message);
+            document.getElementById('results').innerHTML += message + '<br>';
+        }
+
+        function testCache() {
+            log('🧪 Testing localStorage functionality...');
+            
+            // Test basic localStorage support
+            try {
+                localStorage.setItem('test', 'value');
+                localStorage.removeItem('test');
+                log('✅ localStorage is supported and working');
+            } catch (e) {
+                log('❌ localStorage is NOT working: ' + e.message);
+                return;
+            }
+
+            // Check current cache state
+            log('📦 Checking current cache state...');
+            Object.entries(CACHE_KEYS).forEach(([key, value]) => {
+                const data = localStorage.getItem(value);
+                log(`${key}: ${data ? 'EXISTS (' + data.length + ' chars)' : 'NOT FOUND'}`);
+            });
+
+            // Simulate data save
+            log('💾 Simulating data save...');
+            const testData = [
+                {Time: 0, Latitude: 40.7128, Longitude: -74.0060, Speed: 45.2},
+                {Time: 0.1, Latitude: 40.7129, Longitude: -74.0061, Speed: 46.1},
+                {Time: 0.2, Latitude: 40.7130, Longitude: -74.0062, Speed: 47.0}
+            ];
+
+            try {
+                localStorage.setItem(CACHE_KEYS.DATA, JSON.stringify(testData));
+                localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify('test-data.csv'));
+                localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+                localStorage.setItem(CACHE_KEYS.ACTIVE_TAB, JSON.stringify('comparison'));
+                log('✅ Test data saved successfully');
+            } catch (e) {
+                log('❌ Failed to save test data: ' + e.message);
+                return;
+            }
+
+            // Test data retrieval
+            log('📖 Testing data retrieval...');
+            try {
+                const cachedData = localStorage.getItem(CACHE_KEYS.DATA);
+                const cachedTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+                const cachedFileName = localStorage.getItem(CACHE_KEYS.FILE_NAME);
+
+                if (cachedData && cachedTimestamp) {
+                    const parsedData = JSON.parse(cachedData);
+                    const cacheAge = Date.now() - parseInt(cachedTimestamp);
+                    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+
+                    log(`📊 Cached data: ${parsedData.length} records`);
+                    log(`📁 Cached filename: ${cachedFileName}`);
+                    log(`⏰ Cache age: ${Math.round(cacheAge / 1000)} seconds`);
+                    log(`✅ Cache valid: ${cacheAge < maxAge ? 'YES' : 'NO'}`);
+
+                    if (parsedData.length > 0) {
+                        log('✅ Data retrieval successful!');
+                    } else {
+                        log('❌ Retrieved data is empty');
+                    }
+                } else {
+                    log('❌ Failed to retrieve cached data');
+                }
+            } catch (e) {
+                log('❌ Error retrieving data: ' + e.message);
+            }
+
+            // Clear test data
+            log('🗑️ Cleaning up test data...');
+            Object.values(CACHE_KEYS).forEach(key => {
+                localStorage.removeItem(key);
+            });
+            log('✅ Test completed!');
+        }
+
+        // Run test on load
+        window.onload = testCache;
+    </script>
+</body>
+</html>

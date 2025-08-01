@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct localStorage Test</title>
+    <style>
+        body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+        .log { margin: 5px 0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .info { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Direct localStorage Test for Lap Analyzer</h1>
+    <div id="output"></div>
+
+    <script>
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            document.getElementById('output').appendChild(div);
+            console.log(msg);
+        }
+
+        // Test localStorage directly
+        log('Testing localStorage...');
+        
+        try {
+            // Test basic localStorage
+            localStorage.setItem('test', 'works');
+            const test = localStorage.getItem('test');
+            log(`Basic localStorage: ${test}`, test === 'works' ? 'success' : 'error');
+            localStorage.removeItem('test');
+            
+            // Check if lap-analyzer keys exist
+            const keys = Object.keys(localStorage).filter(k => k.includes('lap-analyzer'));
+            log(`Lap analyzer keys found: ${keys.length}`, keys.length > 0 ? 'success' : 'info');
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                const size = value ? value.length : 0;
+                log(`${key}: ${size} chars`, 'info');
+                
+                if (key === 'lap-analyzer-cached-data' && value) {
+                    try {
+                        const data = JSON.parse(value);
+                        log(`Data contains ${data.length} records`, 'success');
+                    } catch (e) {
+                        log(`Data parse error: ${e.message}`, 'error');
+                    }
+                }
+            });
+            
+            // Test cache simulation
+            log('Testing cache simulation...');
+            const testData = [{a: 1, b: 2}, {a: 3, b: 4}];
+            const testFileName = 'test.csv';
+            
+            localStorage.setItem('lap-analyzer-cached-data', JSON.stringify(testData));
+            localStorage.setItem('lap-analyzer-file-name', JSON.stringify(testFileName));
+            localStorage.setItem('lap-analyzer-timestamp', Date.now().toString());
+            
+            log('Test data cached', 'success');
+            
+            // Test retrieval
+            const retrieved = localStorage.getItem('lap-analyzer-cached-data');
+            const retrievedName = localStorage.getItem('lap-analyzer-file-name');
+            const retrievedTime = localStorage.getItem('lap-analyzer-timestamp');
+            
+            if (retrieved && retrievedName && retrievedTime) {
+                const parsedData = JSON.parse(retrieved);
+                const parsedName = JSON.parse(retrievedName);
+                const age = Date.now() - parseInt(retrievedTime);
+                
+                log(`Retrieved ${parsedData.length} records, filename: ${parsedName}, age: ${age}ms`, 'success');
+                log('Cache test PASSED!', 'success');
+            } else {
+                log('Cache test FAILED - could not retrieve data', 'error');
+            }
+            
+        } catch (error) {
+            log(`Error: ${error.message}`, 'error');
+        }
+        
+        log('Test complete. Check console for any additional errors.');
+    </script>
+</body>
+</html>

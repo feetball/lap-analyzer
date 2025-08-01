@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manual Cache Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #1a1a1a; color: white; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .result { background: #333; padding: 15px; margin: 10px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Manual Cache Test for Lap Analyzer</h1>
+    
+    <button onclick="setCacheData()">Set Test Cache Data</button>
+    <button onclick="checkCache()">Check Cache</button>
+    <button onclick="clearCache()">Clear Cache</button>
+    <button onclick="openApp()">Open App</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const CACHE_KEYS = {
+            DATA: 'lap-analyzer-cached-data',
+            SELECTED_LAP: 'lap-analyzer-selected-lap',
+            SELECTED_LAPS: 'lap-analyzer-selected-laps',
+            ACTIVE_TAB: 'lap-analyzer-active-tab',
+            FILE_NAME: 'lap-analyzer-file-name',
+            TIMESTAMP: 'lap-analyzer-cache-timestamp'
+        };
+
+        function log(message) {
+            const div = document.createElement('div');
+            div.className = 'result';
+            div.innerHTML = message;
+            document.getElementById('results').appendChild(div);
+            console.log(message);
+        }
+
+        function setCacheData() {
+            log('Setting test cache data...');
+            
+            const testData = [
+                { Time: 0.0, Latitude: 30.132660, Longitude: -97.640694, Speed: 45.2, RPM: 3500 },
+                { Time: 0.1, Latitude: 30.132661, Longitude: -97.640695, Speed: 46.1, RPM: 3550 },
+                { Time: 0.2, Latitude: 30.132662, Longitude: -97.640696, Speed: 47.0, RPM: 3600 },
+                { Time: 0.3, Latitude: 30.132663, Longitude: -97.640697, Speed: 47.8, RPM: 3650 },
+                { Time: 0.4, Latitude: 30.132664, Longitude: -97.640698, Speed: 48.5, RPM: 3700 }
+            ];
+
+            try {
+                localStorage.setItem(CACHE_KEYS.DATA, JSON.stringify(testData));
+                localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify('manual-test.csv'));
+                localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+                localStorage.setItem(CACHE_KEYS.ACTIVE_TAB, JSON.stringify('comparison'));
+                localStorage.setItem(CACHE_KEYS.SELECTED_LAPS, JSON.stringify([]));
+                
+                log('✅ Test cache data set successfully!');
+                log('📊 Data: ' + testData.length + ' records');
+                log('📁 Filename: manual-test.csv');
+                log('⏰ Timestamp: ' + new Date().toLocaleString());
+            } catch (error) {
+                log('❌ Error setting cache: ' + error.message);
+            }
+        }
+
+        function checkCache() {
+            log('Checking current cache state...');
+            
+            Object.entries(CACHE_KEYS).forEach(([key, storageKey]) => {
+                const value = localStorage.getItem(storageKey);
+                if (value) {
+                    if (storageKey === CACHE_KEYS.DATA) {
+                        try {
+                            const data = JSON.parse(value);
+                            log('✅ ' + key + ': ' + data.length + ' records (' + (value.length / 1024).toFixed(2) + ' KB)');
+                        } catch (e) {
+                            log('❌ ' + key + ': Invalid JSON');
+                        }
+                    } else if (storageKey === CACHE_KEYS.TIMESTAMP) {
+                        const timestamp = parseInt(value);
+                        const date = new Date(timestamp);
+                        const age = Math.round((Date.now() - timestamp) / 1000);
+                        log('✅ ' + key + ': ' + date.toLocaleString() + ' (' + age + 's ago)');
+                    } else {
+                        const displayValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+                        log('✅ ' + key + ': ' + displayValue);
+                    }
+                } else {
+                    log('❌ ' + key + ': Not found');
+                }
+            });
+        }
+
+        function clearCache() {
+            Object.values(CACHE_KEYS).forEach(key => {
+                localStorage.removeItem(key);
+            });
+            log('🗑️ Cache cleared');
+        }
+
+        function openApp() {
+            window.open('http://localhost:3001', '_blank');
+        }
+
+        // Initial check
+        window.onload = function() {
+            log('🚀 Manual Cache Tester loaded');
+            checkCache();
+        };
+    </script>
+</body>
+</html>

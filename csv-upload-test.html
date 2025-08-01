@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSV Upload and Cache Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: white; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .log { background: #333; padding: 15px; border-radius: 8px; margin: 10px 0; font-family: monospace; }
+        .success { color: #4ade80; }
+        .error { color: #ef4444; }
+        .info { color: #60a5fa; }
+        .warning { color: #fbbf24; }
+        button { padding: 10px 20px; margin: 5px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        input[type="file"] { margin: 10px 0; }
+        #results { min-height: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏁 CSV Upload and Cache Test</h1>
+        <p>Test the localStorage caching functionality with real racing data</p>
+        
+        <div>
+            <input type="file" id="csvFile" accept=".csv" />
+            <button onclick="testUpload()">Upload and Test Caching</button>
+            <button onclick="testCacheRetrieval()">Test Cache Retrieval</button>
+            <button onclick="clearAllCache()">Clear Cache</button>
+            <button onclick="showCacheStatus()">Show Cache Status</button>
+        </div>
+        
+        <div id="results" class="log"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script>
+        const CACHE_KEYS = {
+            DATA: 'lap-analyzer-cached-data',
+            SELECTED_LAP: 'lap-analyzer-selected-lap',
+            SELECTED_LAPS: 'lap-analyzer-selected-laps',
+            ACTIVE_TAB: 'lap-analyzer-active-tab',
+            FILE_NAME: 'lap-analyzer-file-name',
+            TIMESTAMP: 'lap-analyzer-cache-timestamp'
+        };
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            const icon = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            }[type] || 'ℹ️';
+            
+            const div = document.getElementById('results');
+            div.innerHTML += `<div class="${className}">[${timestamp}] ${icon} ${message}</div>`;
+            div.scrollTop = div.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function clearLog() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function testUpload() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                log('Please select a CSV file first', 'error');
+                return;
+            }
+
+            clearLog();
+            log(`Testing upload of: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.errors.length > 0) {
+                        log(`CSV parsing errors: ${results.errors[0].message}`, 'error');
+                        return;
+                    }
+
+                    const data = results.data;
+                    log(`📊 Parsed ${data.length} rows of data`, 'success');
+
+                    // Check for GPS data
+                    if (data.length > 0) {
+                        const headers = Object.keys(data[0]);
+                        const hasLat = headers.some(h => h.toLowerCase().includes('lat'));
+                        const hasLng = headers.some(h => h.toLowerCase().includes('lon') || h.toLowerCase().includes('lng'));
+                        
+                        log(`GPS data detected: Lat=${hasLat}, Lng=${hasLng}`, hasLat && hasLng ? 'success' : 'warning');
+                        log(`Available columns: ${headers.slice(0, 10).join(', ')}${headers.length > 10 ? '...' : ''}`);
+                    }
+
+                    // Test caching
+                    testDataCaching(data, file.name);
+                },
+                error: function(error) {
+                    log(`Failed to parse CSV: ${error.message}`, 'error');
+                }
+            });
+        }
+
+        function testDataCaching(data, fileName) {
+            log('🔄 Testing data caching...');
+
+            try {
+                // Simulate the exact caching logic from the app
+                const dataString = JSON.stringify(data);
+                const dataSize = new Blob([dataString]).size;
+                const sizeInMB = (dataSize / 1024 / 1024).toFixed(2);
+                
+                log(`💾 Data size: ${sizeInMB} MB`);
+                
+                // Check size limit
+                const maxSize = 5 * 1024 * 1024; // 5MB
+                if (dataSize > maxSize) {
+                    log(`⚠️ Data too large to cache: ${sizeInMB} MB > 5 MB`, 'warning');
+                    return;
+                }
+
+                // Save to localStorage
+                localStorage.setItem(CACHE_KEYS.DATA, dataString);
+                localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify(fileName));
+                localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+                localStorage.setItem(CACHE_KEYS.ACTIVE_TAB, JSON.stringify('comparison'));
+
+                log(`✅ Data cached successfully!`, 'success');
+                log(`📁 Filename: ${fileName}`, 'success');
+                
+                // Test immediate retrieval
+                setTimeout(() => testCacheRetrieval(), 1000);
+
+            } catch (error) {
+                log(`❌ Caching failed: ${error.message}`, 'error');
+                
+                // Handle quota exceeded
+                if (error.name === 'QuotaExceededError') {
+                    log('💾 localStorage quota exceeded. Trying to clear old data...', 'warning');
+                    clearAllCache();
+                    try {
+                        localStorage.setItem(CACHE_KEYS.DATA, JSON.stringify(data));
+                        localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify(fileName));
+                        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+                        log('✅ Data cached after clearing old cache', 'success');
+                    } catch (retryError) {
+                        log(`❌ Still failed after clearing: ${retryError.message}`, 'error');
+                    }
+                }
+            }
+        }
+
+        function testCacheRetrieval() {
+            log('🔍 Testing cache retrieval...');
+
+            try {
+                const cachedData = localStorage.getItem(CACHE_KEYS.DATA);
+                const cachedTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+                const cachedFileName = localStorage.getItem(CACHE_KEYS.FILE_NAME);
+
+                if (!cachedData || !cachedTimestamp) {
+                    log('❌ No cached data found', 'error');
+                    return;
+                }
+
+                // Check cache age
+                const cacheAge = Date.now() - parseInt(cachedTimestamp);
+                const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                const ageHours = Math.round(cacheAge / (1000 * 60 * 60));
+                const ageMinutes = Math.round(cacheAge / (1000 * 60));
+
+                log(`⏰ Cache age: ${ageMinutes < 60 ? ageMinutes + ' minutes' : ageHours + ' hours'}`);
+                log(`✅ Cache valid: ${cacheAge < maxAge ? 'YES' : 'NO'}`, cacheAge < maxAge ? 'success' : 'warning');
+
+                if (cacheAge < maxAge) {
+                    const parsedData = JSON.parse(cachedData);
+                    const parsedFileName = cachedFileName ? JSON.parse(cachedFileName) : 'unknown';
+                    
+                    log(`📊 Retrieved ${parsedData.length} records`, 'success');
+                    log(`📁 Retrieved filename: ${parsedFileName}`, 'success');
+                    
+                    if (parsedData.length > 0) {
+                        const sampleRow = parsedData[0];
+                        const keys = Object.keys(sampleRow).slice(0, 5);
+                        log(`🔍 Sample data: ${keys.map(k => k + '=' + sampleRow[k]).join(', ')}...`);
+                        log('✅ Cache retrieval test PASSED', 'success');
+                    }
+                } else {
+                    log('⚠️ Cache expired but data exists', 'warning');
+                }
+
+            } catch (error) {
+                log(`❌ Cache retrieval failed: ${error.message}`, 'error');
+            }
+        }
+
+        function showCacheStatus() {
+            clearLog();
+            log('📦 Current cache status:');
+
+            let totalSize = 0;
+            Object.entries(CACHE_KEYS).forEach(([key, storageKey]) => {
+                const value = localStorage.getItem(storageKey);
+                if (value) {
+                    const size = new Blob([value]).size;
+                    totalSize += size;
+                    const sizeKB = (size / 1024).toFixed(2);
+                    
+                    if (storageKey === CACHE_KEYS.DATA) {
+                        try {
+                            const data = JSON.parse(value);
+                            log(`${key}: ${data.length} records (${sizeKB} KB)`, 'success');
+                        } catch (e) {
+                            log(`${key}: Invalid JSON (${sizeKB} KB)`, 'error');
+                        }
+                    } else {
+                        const displayValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+                        log(`${key}: ${displayValue} (${sizeKB} KB)`, 'success');
+                    }
+                } else {
+                    log(`${key}: Not found`, 'warning');
+                }
+            });
+
+            const totalMB = (totalSize / 1024 / 1024).toFixed(2);
+            log(`💾 Total cache size: ${totalMB} MB`);
+
+            // Check localStorage usage
+            try {
+                const total = Object.keys(localStorage).length;
+                log(`🗃️ Total localStorage keys: ${total}`);
+            } catch (e) {
+                log('❌ Could not access localStorage', 'error');
+            }
+        }
+
+        function clearAllCache() {
+            Object.values(CACHE_KEYS).forEach(key => {
+                localStorage.removeItem(key);
+            });
+            log('🗑️ All cache cleared', 'success');
+        }
+
+        // Initialize
+        window.onload = function() {
+            log('🚀 CSV Upload and Cache Tester loaded');
+            log('📋 Instructions:');
+            log('1. Select a CSV file using the file input');
+            log('2. Click "Upload and Test Caching" to test the full cycle');
+            log('3. Use other buttons to test individual functions');
+            showCacheStatus();
+        };
+    </script>
+</body>
+</html>

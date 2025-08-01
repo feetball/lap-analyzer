@@ -30,6 +30,30 @@ export default function Home() {
   const [cachedFileName, setCachedFileName] = useState<string>(''); // Track the cached file name
   const [showHelp, setShowHelp] = useState(false); // Help dialog state
   const [showQuickStart, setShowQuickStart] = useState(false); // Quick start guide state
+  const [isMounted, setIsMounted] = useState(false); // Track if component is mounted on client
+
+  // Debug initial state
+  console.log('🏁 Lap Analyzer component mounted/re-rendered');
+  console.log('📊 Current data length:', data.length);
+  console.log('⏳ Is loading:', isLoading);
+  console.log('📁 Cached filename:', cachedFileName);
+  
+  // Test localStorage access
+  if (typeof window !== 'undefined') {
+    console.log('🌐 Client-side rendering detected');
+    console.log('💾 localStorage available:', typeof localStorage !== 'undefined');
+    try {
+      const testKey = 'lap-analyzer-test';
+      localStorage.setItem(testKey, 'test');
+      const testValue = localStorage.getItem(testKey);
+      localStorage.removeItem(testKey);
+      console.log('✅ localStorage working:', testValue === 'test');
+    } catch (e) {
+      console.error('❌ localStorage test failed:', e);
+    }
+  } else {
+    console.log('🖥️ Server-side rendering detected');
+  }
 
   // Clear cache function
   const clearCache = useCallback(() => {
@@ -38,17 +62,39 @@ export default function Home() {
     });
   }, []);
 
-  // Load cached data on component mount
+  // Track client-side mounting
   useEffect(() => {
+    console.log('🏗️ Component mounting on client...');
+    console.log('🏗️ Window object available:', typeof window !== 'undefined');
+    console.log('🏗️ LocalStorage available:', typeof localStorage !== 'undefined');
+    setIsMounted(true);
+  }, []);
+
+  // Load cached data after component is mounted on client
+  useEffect(() => {
+    if (!isMounted) {
+      console.log('⏳ Component not yet mounted, skipping cache load...');
+      return;
+    }
+
+    console.log('🌐 Client-side: Loading cached data...');
+    
     const loadCachedData = () => {
       try {
+        console.log('🔍 Client-side: Checking for cached data...');
         const cachedData = localStorage.getItem(CACHE_KEYS.DATA);
         const cachedTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+        
+        console.log('📦 Cached data exists:', !!cachedData);
+        console.log('⏰ Cached timestamp exists:', !!cachedTimestamp);
         
         if (cachedData && cachedTimestamp) {
           // Check if cache is less than 24 hours old
           const cacheAge = Date.now() - parseInt(cachedTimestamp);
           const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+          
+          console.log('📅 Cache age (hours):', Math.round(cacheAge / (1000 * 60 * 60)));
+          console.log('✅ Cache valid:', cacheAge < maxAge);
           
           if (cacheAge < maxAge) {
             const parsedData = JSON.parse(cachedData);
@@ -57,97 +103,128 @@ export default function Home() {
             const cachedActiveTab = localStorage.getItem(CACHE_KEYS.ACTIVE_TAB);
             const cachedFileName = localStorage.getItem(CACHE_KEYS.FILE_NAME);
             
+            console.log('📊 Parsed data length:', parsedData.length);
+            console.log('📁 Cached filename:', cachedFileName);
+            
             if (parsedData.length > 0) {
+              console.log('🚀 Restoring cached data...');
               setData(parsedData);
               
-              if (cachedSelectedLap) {
+              if (cachedSelectedLap && cachedSelectedLap !== 'null') {
                 setSelectedLap(JSON.parse(cachedSelectedLap));
               }
               
-              if (cachedSelectedLaps) {
+              if (cachedSelectedLaps && cachedSelectedLaps !== '[]') {
                 setSelectedLaps(JSON.parse(cachedSelectedLaps));
               }
               
-              if (cachedActiveTab) {
+              if (cachedActiveTab && cachedActiveTab !== 'null') {
                 setActiveTab(JSON.parse(cachedActiveTab));
               }
               
-              if (cachedFileName) {
+              if (cachedFileName && cachedFileName !== 'null') {
                 setCachedFileName(JSON.parse(cachedFileName));
               }
+              
+              console.log('✅ Cache restored successfully!');
+            } else {
+              console.log('⚠️ Cached data is empty');
             }
           } else {
             // Cache is too old, clear it
-            clearCache();
+            console.log('🗑️ Cache expired, clearing...');
+            Object.values(CACHE_KEYS).forEach(key => {
+              localStorage.removeItem(key);
+            });
           }
+        } else {
+          console.log('❌ No cached data found');
         }
       } catch (error) {
-        console.error('Error loading cached data:', error);
-        clearCache();
+        console.error('💥 Error loading cached data:', error);
+        // Clear corrupted cache
+        Object.values(CACHE_KEYS).forEach(key => {
+          localStorage.removeItem(key);
+        });
       } finally {
+        console.log('🔄 Setting loading to false...');
         setIsLoading(false);
         
         // Show quick start guide for first-time users (only if no cached data)
         const hasSeenQuickStart = localStorage.getItem('lap-analyzer-seen-quickstart');
-        if (!hasSeenQuickStart) {
+        if (!hasSeenQuickStart && data.length === 0) {
           setTimeout(() => setShowQuickStart(true), 1000);
         }
       }
     };
 
+    // Load cache data
     loadCachedData();
-  }, [clearCache]);
+  }, [isMounted]); // Run when component mounts on client
 
   // Save data to cache when it changes
   useEffect(() => {
-    if (!isLoading && data.length > 0) {
+    // Always save data when it exists, regardless of loading state
+    if (data.length > 0) {
       try {
+        console.log('💾 Saving data to cache...', data.length, 'records', 'isLoading:', isLoading);
         const dataString = JSON.stringify(data);
         const dataSize = new Blob([dataString]).size;
+        const sizeInMB = (dataSize / 1024 / 1024).toFixed(2);
+        
+        console.log('📊 Data size:', sizeInMB, 'MB');
         
         // Check if data is too large (> 5MB)
         const maxSize = 5 * 1024 * 1024; // 5MB
         if (dataSize > maxSize) {
-          console.warn('Data too large to cache efficiently');
+          console.warn('⚠️ Data too large to cache efficiently:', sizeInMB, 'MB');
           return;
         }
         
         localStorage.setItem(CACHE_KEYS.DATA, dataString);
         localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+        console.log('✅ Data cached successfully!');
       } catch (error) {
-        console.error('Error caching data:', error);
+        console.error('❌ Error caching data:', error);
         // If localStorage is full, try to clear old cache and retry
         if (error instanceof DOMException && error.code === 22) {
           clearCache();
           try {
             localStorage.setItem(CACHE_KEYS.DATA, JSON.stringify(data));
             localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+            console.log('✅ Data cached after clearing old cache');
           } catch (retryError) {
-            console.error('Failed to cache data after clearing:', retryError);
+            console.error('❌ Failed to cache data after clearing:', retryError);
           }
         }
       }
     }
-  }, [data, isLoading, clearCache]);
+  }, [data, clearCache]); // Removed isLoading dependency
 
   // Save other state to cache when it changes
   useEffect(() => {
-    if (!isLoading) {
+    // Save selected lap state (but avoid saving null/undefined on initial load)
+    if (selectedLap !== null) {
+      console.log('💾 Saving selected lap:', selectedLap);
       localStorage.setItem(CACHE_KEYS.SELECTED_LAP, JSON.stringify(selectedLap));
     }
-  }, [selectedLap, isLoading]);
+  }, [selectedLap]);
 
   useEffect(() => {
-    if (!isLoading) {
+    // Save selected laps state
+    if (selectedLaps.length > 0) {
+      console.log('💾 Saving selected laps:', selectedLaps);
       localStorage.setItem(CACHE_KEYS.SELECTED_LAPS, JSON.stringify(selectedLaps));
     }
-  }, [selectedLaps, isLoading]);
+  }, [selectedLaps]);
 
   useEffect(() => {
-    if (!isLoading) {
+    // Save active tab state  
+    if (activeTab) {
+      console.log('💾 Saving active tab:', activeTab);
       localStorage.setItem(CACHE_KEYS.ACTIVE_TAB, JSON.stringify(activeTab));
     }
-  }, [activeTab, isLoading]);
+  }, [activeTab]);
 
   // Get cache information
   const getCacheInfo = () => {
@@ -174,10 +251,24 @@ export default function Home() {
 
   // Enhanced data loader that also caches file name
   const handleDataLoad = (newData: any[], fileName?: string) => {
+    console.log('📁 Loading new data:', newData.length, 'records, filename:', fileName);
     setData(newData);
+    
     if (fileName) {
+      console.log('📝 Caching filename:', fileName);
       setCachedFileName(fileName);
       localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify(fileName));
+    }
+    
+    // Immediately cache the data as well
+    try {
+      console.log('💾 Immediately caching new data...');
+      const dataString = JSON.stringify(newData);
+      localStorage.setItem(CACHE_KEYS.DATA, dataString);
+      localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+      console.log('✅ Data immediately cached!');
+    } catch (error) {
+      console.error('❌ Failed to immediately cache data:', error);
     }
   };
 
