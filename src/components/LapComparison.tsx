@@ -216,6 +216,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
   const [chartWidth, setChartWidth] = useState(800);
   const [chartHeight, setChartHeight] = useState(400);
   const [currentPosition, setCurrentPosition] = useState<number | null>(null); // Track chart hover position
+  const [showTooltip, setShowTooltip] = useState(true); // Toggle tooltip visibility
 
   // Initialize Chart.js components
   useChartJS();
@@ -396,7 +397,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
     };
   }, [selectedLaps, laps, comparisonMetric]);
 
-  const chartOptions: ChartOptionsType = {
+  const chartOptions: ChartOptionsType = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     interaction: {
@@ -416,6 +417,12 @@ export default function LapComparison({ data }: LapComparisonProps) {
         position: 'top' as const,
         labels: {
           color: 'white',
+          boxHeight: 12,
+          boxWidth: 12,
+          padding: 8,
+          font: {
+            size: 11
+          }
         },
       },
       title: {
@@ -424,17 +431,33 @@ export default function LapComparison({ data }: LapComparisonProps) {
         color: 'white',
       },
       tooltip: {
-        enabled: true,
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+        enabled: showTooltip && selectedLaps.length <= 6, // Auto-disable for many laps
+        backgroundColor: 'rgba(0, 0, 0, 0.95)',
         titleColor: 'white',
         bodyColor: 'white',
         borderColor: 'rgba(255, 255, 255, 0.3)',
         borderWidth: 1,
         cornerRadius: 8,
-        padding: 12,
+        padding: 8,
+        displayColors: true,
+        position: 'nearest',
+        xAlign: 'center',
+        yAlign: 'top',
+        caretPadding: 10,
+        titleFont: {
+          size: 12,
+          weight: 'bold'
+        },
+        bodyFont: {
+          size: 11
+        },
+        filter: function(tooltipItem: any) {
+          // Limit to maximum 4 datasets to prevent tooltip overflow
+          return tooltipItem.datasetIndex < 4;
+        },
         callbacks: {
           title: function(context: any) {
-            return `Progress: ${context[0]?.label}%`;
+            return `${context[0]?.label}%`;
           },
           label: function(context: any) {
             const value = context.parsed.y;
@@ -442,46 +465,35 @@ export default function LapComparison({ data }: LapComparisonProps) {
                         comparisonMetric.toLowerCase().includes('temp') ? '°F' :
                         comparisonMetric.toLowerCase().includes('rpm') ? ' RPM' :
                         comparisonMetric.toLowerCase().includes('pressure') ? ' psi' : '';
-            return `${context.dataset.label}: ${value.toFixed(2)}${unit}`;
+            return `${context.dataset.label}: ${value.toFixed(1)}${unit}`;
           },
-          afterBody: function(context: any) {
-            if (context.length < 2) return [];
+          afterLabel: function(context: any, chart: any) {
+            // Only show differences for the first 2 laps to keep tooltip compact
+            if (context.datasetIndex > 1) return '';
             
-            const values = context.map((item: any) => ({
-              label: item.dataset.label,
-              value: item.parsed.y
-            }));
+            const allTooltipItems = chart.tooltip.dataPoints || [];
+            if (allTooltipItems.length < 2) return '';
             
-            // Calculate differences between laps
-            const differences = [];
-            const unit = comparisonMetric.toLowerCase().includes('speed') ? ' mph' :
-                        comparisonMetric.toLowerCase().includes('temp') ? '°F' :
-                        comparisonMetric.toLowerCase().includes('rpm') ? ' RPM' :
-                        comparisonMetric.toLowerCase().includes('pressure') ? ' psi' : '';
+            const currentValue = context.parsed.y;
+            const baselineValue = allTooltipItems[0].parsed.y;
             
-            differences.push(''); // Empty line for spacing
-            differences.push('Differences:');
-            
-            // Compare each lap to the first selected lap
-            const baseline = values[0];
-            for (let i = 1; i < values.length; i++) {
-              const diff = values[i].value - baseline.value;
+            if (context.datasetIndex === 1) {
+              const diff = currentValue - baselineValue;
               const sign = diff >= 0 ? '+' : '';
-              differences.push(`${values[i].label} vs ${baseline.label}: ${sign}${diff.toFixed(2)}${unit}`);
+              const unit = comparisonMetric.toLowerCase().includes('speed') ? ' mph' :
+                          comparisonMetric.toLowerCase().includes('temp') ? '°F' :
+                          comparisonMetric.toLowerCase().includes('rpm') ? ' RPM' :
+                          comparisonMetric.toLowerCase().includes('pressure') ? ' psi' : '';
+              return `Δ ${sign}${diff.toFixed(1)}${unit}`;
             }
             
-            // Also compare consecutive laps if more than 2
-            if (values.length > 2) {
-              differences.push(''); // Empty line
-              differences.push('Consecutive differences:');
-              for (let i = 1; i < values.length; i++) {
-                const diff = values[i].value - values[i-1].value;
-                const sign = diff >= 0 ? '+' : '';
-                differences.push(`${values[i].label} vs ${values[i-1].label}: ${sign}${diff.toFixed(2)}${unit}`);
-              }
+            return '';
+          },
+          footer: function(tooltipItems: any[]) {
+            if (tooltipItems.length > 4) {
+              return [`\n+${tooltipItems.length - 4} more laps...`];
             }
-            
-            return differences;
+            return [];
           }
         }
       },
@@ -518,7 +530,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
         },
       },
     },
-  };
+  }), [comparisonMetric, showTooltip, selectedLaps.length]);
 
   // Calculate lap time differences
   const lapTimeComparison = useMemo(() => {
@@ -691,8 +703,26 @@ export default function LapComparison({ data }: LapComparisonProps) {
         <div className="bg-white/5 rounded-lg p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-medium">Performance Chart</h3>
-            <div className="text-xs text-gray-400">
-              📏 Drag bottom edge to resize chart height
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowTooltip(!showTooltip)}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  showTooltip 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                }`}
+              >
+                {showTooltip ? '🏷️ Hide Tooltip' : '🏷️ Show Tooltip'}
+              </button>
+              {selectedLaps.length > 6 && showTooltip && (
+                <div className="text-xs text-yellow-400 flex items-center space-x-1">
+                  <span>⚠️</span>
+                  <span>Tooltip auto-disabled (6+ laps)</span>
+                </div>
+              )}
+              <div className="text-xs text-gray-400">
+                📏 Drag bottom edge to resize chart height
+              </div>
             </div>
           </div>
           <ResizableContainer
@@ -723,7 +753,38 @@ export default function LapComparison({ data }: LapComparisonProps) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-medium">Track Position</h3>
             <div className="text-xs text-gray-400">
-              {currentPosition !== null ? `Position: ${currentPosition}%` : 'Hover over chart to see position'}
+              {currentPosition !== null ? (
+                <div className="flex items-center space-x-4">
+                  <span>Position: {currentPosition}%</span>
+                  {!showTooltip && selectedLaps.length > 0 && (
+                    <span className="text-white bg-black/50 px-2 py-1 rounded">
+                      {(() => {
+                        const firstLap = laps.find(l => l.lapNumber === selectedLaps[0]);
+                        if (!firstLap || !comparisonMetric) return '';
+                        
+                        const values = firstLap.data.map(d => d[comparisonMetric] || 0);
+                        const normalizedValues = [];
+                        const step = values.length / 100;
+                        
+                        for (let i = 0; i < 100; i++) {
+                          const sourceIndex = Math.floor(i * step);
+                          normalizedValues.push(values[sourceIndex] || 0);
+                        }
+                        
+                        const value = normalizedValues[currentPosition] || 0;
+                        const unit = comparisonMetric.toLowerCase().includes('speed') ? ' mph' :
+                                    comparisonMetric.toLowerCase().includes('temp') ? '°F' :
+                                    comparisonMetric.toLowerCase().includes('rpm') ? ' RPM' :
+                                    comparisonMetric.toLowerCase().includes('pressure') ? ' psi' : '';
+                        
+                        return `${comparisonMetric}: ${value.toFixed(1)}${unit}`;
+                      })()}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                'Hover over chart to see position'
+              )}
             </div>
           </div>
           <div className="bg-white/5 rounded-lg p-4">
