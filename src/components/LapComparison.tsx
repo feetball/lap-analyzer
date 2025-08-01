@@ -40,6 +40,163 @@ const useChartJS = () => {
 // Type for Chart.js options (fallback for SSR)
 type ChartOptionsType = any;
 
+// TrackMinimap component for displaying a small track visualization with position indicator
+interface TrackMinimapProps {
+  trackData: Array<{
+    lapNumber: number;
+    coordinates: Array<{ lat: number; lon: number }>;
+  }>;
+  currentPosition: number | null;
+  selectedLaps: number[];
+}
+
+function TrackMinimap({ trackData, currentPosition, selectedLaps }: TrackMinimapProps) {
+  if (!trackData || trackData.length === 0) {
+    return (
+      <div className="h-32 w-full bg-white/5 rounded-lg flex items-center justify-center">
+        <span className="text-gray-400 text-sm">No GPS data available</span>
+      </div>
+    );
+  }
+
+  // Get all coordinates to calculate bounds
+  const allCoordinates = trackData.flatMap(track => track.coordinates);
+  if (allCoordinates.length === 0) {
+    return (
+      <div className="h-32 w-full bg-white/5 rounded-lg flex items-center justify-center">
+        <span className="text-gray-400 text-sm">No valid GPS coordinates</span>
+      </div>
+    );
+  }
+
+  // Calculate bounds
+  const lats = allCoordinates.map(coord => coord.lat);
+  const lons = allCoordinates.map(coord => coord.lon);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+
+  // Add some padding
+  const latPadding = (maxLat - minLat) * 0.1;
+  const lonPadding = (maxLon - minLon) * 0.1;
+
+  const normalizeX = (lon: number) => ((lon - minLon + lonPadding) / (maxLon - minLon + 2 * lonPadding)) * 100;
+  const normalizeY = (lat: number) => (1 - (lat - minLat + latPadding) / (maxLat - minLat + 2 * latPadding)) * 100;
+
+  const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+
+  return (
+    <div className="relative h-48 w-full bg-gray-900 rounded-lg overflow-hidden border border-white/10">
+      <svg 
+        width="100%" 
+        height="100%" 
+        viewBox="0 0 100 100" 
+        preserveAspectRatio="xMidYMid meet"
+        className="absolute inset-0"
+      >
+        {/* Draw track lines for each lap */}
+        {trackData.map((track, index) => {
+          if (track.coordinates.length < 2) return null;
+          
+          const pathData = track.coordinates.map((coord, i) => {
+            const x = normalizeX(coord.lon);
+            const y = normalizeY(coord.lat);
+            return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+          }).join(' ');
+
+          return (
+            <path
+              key={track.lapNumber}
+              d={pathData}
+              stroke={colors[index % colors.length]}
+              strokeWidth="0.3"
+              fill="none"
+              opacity="0.8"
+            />
+          );
+        })}
+
+        {/* Draw start/finish line */}
+        {trackData[0] && trackData[0].coordinates.length > 0 && (
+          <circle
+            cx={normalizeX(trackData[0].coordinates[0].lon)}
+            cy={normalizeY(trackData[0].coordinates[0].lat)}
+            r="1"
+            fill="#10b981"
+            stroke="#ffffff"
+            strokeWidth="0.2"
+          />
+        )}
+
+        {/* Draw current position indicator */}
+        {currentPosition !== null && trackData[0] && trackData[0].coordinates.length > 0 && (
+          (() => {
+            const coordIndex = Math.floor((currentPosition / 100) * (trackData[0].coordinates.length - 1));
+            const coord = trackData[0].coordinates[coordIndex];
+            if (!coord) return null;
+
+            return (
+              <g>
+                {/* Pulse effect */}
+                <circle
+                  cx={normalizeX(coord.lon)}
+                  cy={normalizeY(coord.lat)}
+                  r="2"
+                  fill="#ff0000"
+                  opacity="0.3"
+                >
+                  <animate
+                    attributeName="r"
+                    values="1;3;1"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.8;0.2;0.8"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                {/* Static center dot */}
+                <circle
+                  cx={normalizeX(coord.lon)}
+                  cy={normalizeY(coord.lat)}
+                  r="0.8"
+                  fill="#ffffff"
+                  stroke="#ff0000"
+                  strokeWidth="0.2"
+                />
+              </g>
+            );
+          })()
+        )}
+      </svg>
+
+      {/* Legend */}
+      <div className="absolute top-2 left-2 space-y-1">
+        {trackData.map((track, index) => (
+          <div key={track.lapNumber} className="flex items-center space-x-1 text-xs">
+            <div 
+              className="w-2 h-2 rounded-full" 
+              style={{ backgroundColor: colors[index % colors.length] }}
+            />
+            <span className="text-white">Lap {track.lapNumber}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Position indicator */}
+      {currentPosition !== null && (
+        <div className="absolute top-2 right-2 text-xs text-white bg-black/50 px-2 py-1 rounded">
+          {currentPosition}%
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface LapComparisonProps {
   data: any[];
 }
@@ -58,6 +215,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [chartWidth, setChartWidth] = useState(800);
   const [chartHeight, setChartHeight] = useState(400);
+  const [currentPosition, setCurrentPosition] = useState<number | null>(null); // Track chart hover position
 
   // Initialize Chart.js components
   useChartJS();
@@ -146,6 +304,38 @@ export default function LapComparison({ data }: LapComparisonProps) {
     return processedLaps;
   }, [data]);
 
+  // Extract GPS coordinates for minimap
+  const gpsTrackData = useMemo(() => {
+    if (!data || data.length === 0) return null;
+
+    const latKey = Object.keys(data[0]).find(key => 
+      key.toLowerCase().includes('lat') && typeof data[0][key] === 'number'
+    );
+    const lonKey = Object.keys(data[0]).find(key => 
+      (key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng')) && 
+      typeof data[0][key] === 'number'
+    );
+
+    if (!latKey || !lonKey) return null;
+
+    // Get GPS coordinates for the selected laps
+    const trackCoordinates = selectedLaps
+      .map(lapNum => {
+        const lap = laps.find(l => l.lapNumber === lapNum);
+        if (!lap) return null;
+
+        return {
+          lapNumber: lapNum,
+          coordinates: lap.data
+            .filter(row => row[latKey] && row[lonKey])
+            .map(row => ({ lat: row[latKey], lon: row[lonKey] }))
+        };
+      })
+      .filter((track): track is NonNullable<typeof track> => track !== null);
+
+    return trackCoordinates.length > 0 ? trackCoordinates : null;
+  }, [data, selectedLaps, laps]);
+
   // Auto-select first two laps when lap data changes
   useEffect(() => {
     if (laps.length > 0 && selectedLaps.length === 0) {
@@ -212,6 +402,14 @@ export default function LapComparison({ data }: LapComparisonProps) {
     interaction: {
       intersect: false,
       mode: 'index' as const,
+    },
+    onHover: (event: any, elements: any[], chart: any) => {
+      if (elements.length > 0) {
+        const elementIndex = elements[0].index;
+        setCurrentPosition(elementIndex);
+      } else {
+        setCurrentPosition(null);
+      }
     },
     plugins: {
       legend: {
@@ -516,6 +714,25 @@ export default function LapComparison({ data }: LapComparisonProps) {
               <Line data={chartData} options={chartOptions} />
             </div>
           </ResizableContainer>
+        </div>
+      )}
+
+      {/* Track Minimap */}
+      {gpsTrackData && selectedLaps.length > 0 && (
+        <div className="bg-white/5 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-medium">Track Position</h3>
+            <div className="text-xs text-gray-400">
+              {currentPosition !== null ? `Position: ${currentPosition}%` : 'Hover over chart to see position'}
+            </div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-4">
+            <TrackMinimap 
+              trackData={gpsTrackData} 
+              currentPosition={currentPosition}
+              selectedLaps={selectedLaps}
+            />
+          </div>
         </div>
       )}
 
