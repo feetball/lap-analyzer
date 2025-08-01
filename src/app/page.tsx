@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FileUpload from '@/components/FileUpload';
 import DataAnalysis from '@/components/DataAnalysis';
 import CircuitMap from '@/components/CircuitMap';
@@ -12,6 +12,172 @@ export default function Home() {
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
   const [selectedLaps, setSelectedLaps] = useState<number[]>([]); // For multi-lap selection
   const [activeTab, setActiveTab] = useState<'analysis' | 'map' | 'comparison' | 'sessions'>('analysis');
+  const [isLoading, setIsLoading] = useState(true); // Track initial loading state
+  const [cachedFileName, setCachedFileName] = useState<string>(''); // Track the cached file name
+
+  // Cache keys for localStorage
+  const CACHE_KEYS = {
+    DATA: 'lap-analyzer-cached-data',
+    SELECTED_LAP: 'lap-analyzer-selected-lap',
+    SELECTED_LAPS: 'lap-analyzer-selected-laps',
+    ACTIVE_TAB: 'lap-analyzer-active-tab',
+    FILE_NAME: 'lap-analyzer-file-name',
+    TIMESTAMP: 'lap-analyzer-cache-timestamp'
+  };
+
+  // Load cached data on component mount
+  useEffect(() => {
+    const loadCachedData = () => {
+      try {
+        const cachedData = localStorage.getItem(CACHE_KEYS.DATA);
+        const cachedTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+        
+        if (cachedData && cachedTimestamp) {
+          // Check if cache is less than 24 hours old
+          const cacheAge = Date.now() - parseInt(cachedTimestamp);
+          const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+          
+          if (cacheAge < maxAge) {
+            const parsedData = JSON.parse(cachedData);
+            const cachedSelectedLap = localStorage.getItem(CACHE_KEYS.SELECTED_LAP);
+            const cachedSelectedLaps = localStorage.getItem(CACHE_KEYS.SELECTED_LAPS);
+            const cachedActiveTab = localStorage.getItem(CACHE_KEYS.ACTIVE_TAB);
+            const cachedFileName = localStorage.getItem(CACHE_KEYS.FILE_NAME);
+            
+            if (parsedData.length > 0) {
+              setData(parsedData);
+              
+              if (cachedSelectedLap) {
+                setSelectedLap(JSON.parse(cachedSelectedLap));
+              }
+              
+              if (cachedSelectedLaps) {
+                setSelectedLaps(JSON.parse(cachedSelectedLaps));
+              }
+              
+              if (cachedActiveTab) {
+                setActiveTab(JSON.parse(cachedActiveTab));
+              }
+              
+              if (cachedFileName) {
+                setCachedFileName(JSON.parse(cachedFileName));
+              }
+            }
+          } else {
+            // Cache is too old, clear it
+            clearCache();
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cached data:', error);
+        clearCache();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCachedData();
+  }, []);
+
+  // Save data to cache when it changes
+  useEffect(() => {
+    if (!isLoading && data.length > 0) {
+      try {
+        const dataString = JSON.stringify(data);
+        const dataSize = new Blob([dataString]).size;
+        
+        // Check if data is too large (> 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (dataSize > maxSize) {
+          console.warn('Data too large to cache efficiently');
+          return;
+        }
+        
+        localStorage.setItem(CACHE_KEYS.DATA, dataString);
+        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+      } catch (error) {
+        console.error('Error caching data:', error);
+        // If localStorage is full, try to clear old cache and retry
+        if (error instanceof DOMException && error.code === 22) {
+          clearCache();
+          try {
+            localStorage.setItem(CACHE_KEYS.DATA, JSON.stringify(data));
+            localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+          } catch (retryError) {
+            console.error('Failed to cache data after clearing:', retryError);
+          }
+        }
+      }
+    }
+  }, [data, isLoading]);
+
+  // Save other state to cache when it changes
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(CACHE_KEYS.SELECTED_LAP, JSON.stringify(selectedLap));
+    }
+  }, [selectedLap, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(CACHE_KEYS.SELECTED_LAPS, JSON.stringify(selectedLaps));
+    }
+  }, [selectedLaps, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(CACHE_KEYS.ACTIVE_TAB, JSON.stringify(activeTab));
+    }
+  }, [activeTab, isLoading]);
+
+  // Get cache information
+  const getCacheInfo = () => {
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEYS.DATA);
+      const cachedTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+      
+      if (cachedData && cachedTimestamp) {
+        const dataSize = new Blob([cachedData]).size;
+        const timestamp = new Date(parseInt(cachedTimestamp));
+        const sizeInMB = (dataSize / 1024 / 1024).toFixed(2);
+        
+        return {
+          size: `${sizeInMB} MB`,
+          timestamp: timestamp.toLocaleString(),
+          age: Math.round((Date.now() - parseInt(cachedTimestamp)) / (1000 * 60 * 60)) // hours
+        };
+      }
+    } catch (error) {
+      console.error('Error getting cache info:', error);
+    }
+    return null;
+  };
+
+  // Clear cache function
+  const clearCache = () => {
+    Object.values(CACHE_KEYS).forEach(key => {
+      localStorage.removeItem(key);
+    });
+  };
+
+  // Enhanced data loader that also caches file name
+  const handleDataLoad = (newData: any[], fileName?: string) => {
+    setData(newData);
+    if (fileName) {
+      setCachedFileName(fileName);
+      localStorage.setItem(CACHE_KEYS.FILE_NAME, JSON.stringify(fileName));
+    }
+  };
+
+  // Enhanced clear function that also clears cache
+  const handleClearData = () => {
+    setData([]);
+    setSelectedLap(null);
+    setSelectedLaps([]);
+    setCachedFileName('');
+    setActiveTab('analysis');
+    clearCache();
+  };
 
   const tabs = [
     { id: 'analysis', label: 'Data Analysis', icon: '📊' },
@@ -37,9 +203,47 @@ export default function Home() {
       {/* Main Container */}
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
         {/* File Upload Section */}
-        {data.length === 0 && (
+        {data.length === 0 && !isLoading && (
           <div className="mb-8">
-            <FileUpload onDataLoad={setData} />
+            <FileUpload onDataLoad={handleDataLoad} />
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="mb-8 text-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="text-gray-300">Loading cached data...</p>
+          </div>
+        )}
+
+        {/* Cached Data Indicator */}
+        {data.length > 0 && cachedFileName && (
+          <div className="mb-4 bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+            <div className="flex items-center gap-2 justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-400">💾</span>
+                <div>
+                  <span className="text-blue-300 text-sm">
+                    Restored from cache: <strong>{cachedFileName}</strong>
+                  </span>
+                  {(() => {
+                    const cacheInfo = getCacheInfo();
+                    return cacheInfo && (
+                      <div className="text-xs text-blue-400 mt-1">
+                        {cacheInfo.size} • Cached {cacheInfo.age}h ago • {cacheInfo.timestamp}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              <button
+                onClick={handleClearData}
+                className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs transition-colors"
+              >
+                Clear Cache
+              </button>
+            </div>
           </div>
         )}
 
@@ -105,6 +309,11 @@ export default function Home() {
                   <span className="text-green-400 font-medium">
                     📈 {data.length.toLocaleString()} data points loaded
                   </span>
+                  {cachedFileName && (
+                    <span className="text-blue-400 text-sm">
+                      💾 Cached: {cachedFileName}
+                    </span>
+                  )}
                   {selectedLaps.length > 0 ? (
                     <span className="text-blue-400">
                       🏁 {selectedLaps.length === 1 
@@ -118,17 +327,23 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    setData([]);
-                    setSelectedLap(null);
-                    setSelectedLaps([]);
-                    setActiveTab('analysis');
-                  }}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
-                >
-                  Load New Data
-                </button>
+                <div className="flex gap-2">
+                  {cachedFileName && (
+                    <button
+                      onClick={handleClearData}
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+                      title="Clear cached data"
+                    >
+                      Clear Cache
+                    </button>
+                  )}
+                  <button
+                    onClick={handleClearData}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+                  >
+                    Load New Data
+                  </button>
+                </div>
               </div>
             </div>
           </>

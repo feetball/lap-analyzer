@@ -5,7 +5,7 @@ import { Upload, File, CheckCircle, AlertCircle } from 'lucide-react';
 import Papa from 'papaparse';
 
 interface FileUploadProps {
-  onDataLoad: (data: any[]) => void;
+  onDataLoad: (data: any[], fileName?: string) => void;
 }
 
 export default function FileUpload({ onDataLoad }: FileUploadProps) {
@@ -47,7 +47,7 @@ export default function FileUpload({ onDataLoad }: FileUploadProps) {
           return;
         }
 
-        onDataLoad(data);
+        onDataLoad(data, file.name);
         setIsLoading(false);
       },
       error: (error) => {
