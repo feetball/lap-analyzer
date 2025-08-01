@@ -116,7 +116,7 @@ export default function CircuitMap({
   const [colorMode, setColorMode] = useState<'none' | 'overlay'>('none');
   const [throttleOverlay, setThrottleOverlay] = useState<boolean>(false);
   const [brakeOverlay, setBrakeOverlay] = useState<boolean>(false);
-  const [visualMode, setVisualMode] = useState<'color' | 'width'>('color');
+  const [visualMode, setVisualMode] = useState<'width'>('width'); // Only width mode now
   const [widthMultiplier, setWidthMultiplier] = useState<number>(1.0);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [mapHeight, setMapHeight] = useState(800); // Default to 800px
@@ -458,72 +458,43 @@ export default function CircuitMap({
 
           let width = 2; // Default width
           
-          if (visualMode === 'width') {
-            // In width mode with multiple laps selected, use original lap colors
-            if (activeLaps.length > 1) {
-              segmentColor = lapColor; // Use the lap's original color
-              opacity = 0.8; // High opacity for visibility
-              
-              if (throttleOverlay && !brakeOverlay) {
-                width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
-              } else if (brakeOverlay && !throttleOverlay) {
-                width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
-              } else if (throttleOverlay && brakeOverlay) {
-                const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
-                const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
-                // Use the larger width
-                width = Math.max(throttleWidth, brakeWidth);
-              }
-            } else {
-              // Single lap or no laps selected - use original color logic
-              if (throttleOverlay && !brakeOverlay) {
-                width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
-                segmentColor = '#3B82F6'; // Blue for throttle
-                opacity = 0.8;
-              } else if (brakeOverlay && !throttleOverlay) {
-                width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
-                segmentColor = '#F59E0B'; // Orange for brake
-                opacity = 0.8;
-              } else if (throttleOverlay && brakeOverlay) {
-                const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
-                const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
-                
-                if (brakeValue >= throttleValue) {
-                  width = brakeWidth;
-                  segmentColor = '#F59E0B'; // Orange for brake
-                } else {
-                  width = throttleWidth;
-                  segmentColor = '#3B82F6'; // Blue for throttle
-                }
-                opacity = 0.8;
-              }
+          // Width mode with multiple laps selected, use original lap colors
+          if (activeLaps.length > 1) {
+            segmentColor = lapColor; // Use the lap's original color
+            opacity = 0.8; // High opacity for visibility
+            
+            if (throttleOverlay && !brakeOverlay) {
+              width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+            } else if (brakeOverlay && !throttleOverlay) {
+              width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+            } else if (throttleOverlay && brakeOverlay) {
+              const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+              const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+              // Use the larger width
+              width = Math.max(throttleWidth, brakeWidth);
             }
           } else {
-            // Color mode (existing logic)
+            // Single lap or no laps selected - use throttle/brake colors
             if (throttleOverlay && !brakeOverlay) {
-              const throttleOpacity = getOpacityFromValue(throttleValue, throttleMin, throttleMax);
-              if (throttleOpacity !== null) {
-                segmentColor = '#22c55e'; // Green
-                opacity = throttleOpacity;
-              }
+              width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+              segmentColor = '#3B82F6'; // Blue for throttle
+              opacity = 0.8;
             } else if (brakeOverlay && !throttleOverlay) {
-              const brakeOpacity = getOpacityFromValue(brakeValue, brakeMin, brakeMax);
-              if (brakeOpacity !== null) {
-                segmentColor = '#ef4444'; // Red
-                opacity = brakeOpacity;
-              }
+              width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+              segmentColor = '#F59E0B'; // Orange for brake
+              opacity = 0.8;
             } else if (throttleOverlay && brakeOverlay) {
-              const throttleOpacity = getOpacityFromValue(throttleValue, throttleMin, throttleMax);
-              const brakeOpacity = getOpacityFromValue(brakeValue, brakeMin, brakeMax);
+              const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+              const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
               
-              // In both mode, brake takes priority when both are >= 25% of their respective ranges
-              if (brakeOpacity !== null && (throttleOpacity === null || brakeValue >= throttleValue)) {
-                segmentColor = '#ef4444'; // Red for brake
-                opacity = brakeOpacity;
-              } else if (throttleOpacity !== null) {
-                segmentColor = '#22c55e'; // Green for throttle
-                opacity = throttleOpacity;
+              if (brakeValue >= throttleValue) {
+                width = brakeWidth;
+                segmentColor = '#F59E0B'; // Orange for brake
+              } else {
+                width = throttleWidth;
+                segmentColor = '#3B82F6'; // Blue for throttle
               }
+              opacity = 0.8;
             }
           }
           
@@ -701,138 +672,118 @@ export default function CircuitMap({
 
       {/* Channel Selector */}
       {showChannelSelector && (
-        <div className="bg-white/5 rounded-lg p-4 space-y-4">
-          <h3 className="text-white font-medium">Data Channel Settings</h3>
+        <div className="bg-white/5 rounded-lg p-3 space-y-3">
+          <h3 className="text-white font-medium">Settings</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left side: Overlays, Right side: Channels */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Data Overlays - Left side */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Throttle Channel
+                Data Overlays
               </label>
-              <select
-                value={throttleChannel}
-                onChange={(e) => setThrottleChannel(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-              >
-                <option value="">Select throttle channel</option>
-                {availableChannels.map(channel => (
-                  <option key={channel} value={channel} className="bg-gray-800">
-                    {channel}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Brake Channel
-              </label>
-              <select
-                value={brakeChannel}
-                onChange={(e) => setBrakeChannel(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-              >
-                <option value="">Select brake channel</option>
-                {availableChannels.map(channel => (
-                  <option key={channel} value={channel} className="bg-gray-800">
-                    {channel}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Data Overlays
-            </label>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-300">Throttle Overlay</span>
-                <button
-                  onClick={() => setThrottleOverlay(!throttleOverlay)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    throttleOverlay
-                      ? 'bg-green-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                  disabled={!throttleChannel}
-                >
-                  {throttleOverlay ? 'ON' : 'OFF'}
-                </button>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-300">Brake Overlay</span>
-                <button
-                  onClick={() => setBrakeOverlay(!brakeOverlay)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    brakeOverlay
-                      ? 'bg-red-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                  disabled={!brakeChannel}
-                >
-                  {brakeOverlay ? 'ON' : 'OFF'}
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Visual Mode
-            </label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {[
-                { value: 'color', label: 'Color Intensity' },
-                { value: 'width', label: 'Line Width' },
-              ].map(mode => (
-                <button
-                  key={mode.value}
-                  onClick={() => setVisualMode(mode.value as any)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    visualMode === mode.value
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-            
-            {visualMode === 'width' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Line Width Multiplier: {widthMultiplier.toFixed(1)}x
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="3.0"
-                  step="0.1"
-                  value={widthMultiplier}
-                  onChange={(e) => setWidthMultiplier(parseFloat(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>0.1x (Thin)</span>
-                  <span>3.0x (Thick)</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">Throttle</span>
+                  <button
+                    onClick={() => setThrottleOverlay(!throttleOverlay)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      throttleOverlay
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    }`}
+                    disabled={!throttleChannel}
+                  >
+                    {throttleOverlay ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">Brake</span>
+                  <button
+                    onClick={() => setBrakeOverlay(!brakeOverlay)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      brakeOverlay
+                        ? 'bg-red-500 text-white'
+                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    }`}
+                    disabled={!brakeChannel}
+                  >
+                    {brakeOverlay ? 'ON' : 'OFF'}
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Channel Selection - Right side */}
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Data Channels
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <select
+                    value={throttleChannel}
+                    onChange={(e) => setThrottleChannel(e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
+                  >
+                    <option value="">Select throttle channel</option>
+                    {availableChannels.map(channel => (
+                      <option key={channel} value={channel} className="bg-gray-800">
+                        {channel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <select
+                    value={brakeChannel}
+                    onChange={(e) => setBrakeChannel(e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
+                  >
+                    <option value="">Select brake channel</option>
+                    {availableChannels.map(channel => (
+                      <option key={channel} value={channel} className="bg-gray-800">
+                        {channel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Line Width Controls */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Line Width Multiplier: {widthMultiplier.toFixed(1)}x
+            </label>
+            <input
+              type="range"
+              min="0.1"
+              max="3.0"
+              step="0.1"
+              value={widthMultiplier}
+              onChange={(e) => setWidthMultiplier(parseFloat(e.target.value))}
+              className="w-full accent-blue-500"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>0.1x (Thin)</span>
+              <span>3.0x (Thick)</span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Map View */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Map View
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <button
                   onClick={() => setTileLayer('satellite')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                     tileLayer === 'satellite'
                       ? 'bg-red-500 text-white'
                       : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -842,7 +793,7 @@ export default function CircuitMap({
                 </button>
                 <button
                   onClick={() => setTileLayer('street')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                     tileLayer === 'street'
                       ? 'bg-red-500 text-white'
                       : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -853,9 +804,10 @@ export default function CircuitMap({
               </div>
             </div>
             
+            {/* Map Height */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Map Height: {mapHeight}px
+                Height: {mapHeight}px
               </label>
               <input
                 type="range"
@@ -866,37 +818,38 @@ export default function CircuitMap({
                 className="w-full accent-red-500"
               />
             </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Start/Finish Line
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsSettingStartFinish(!isSettingStartFinish)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isSettingStartFinish
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                }`}
-              >
-                {isSettingStartFinish ? 'Click Map to Set' : 'Move Start/Finish'}
-              </button>
-              {customStartFinish && (
+
+            {/* Start/Finish Line */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Start/Finish
+              </label>
+              <div className="flex gap-1">
                 <button
-                  onClick={() => setCustomStartFinish(null)}
-                  className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                  onClick={() => setIsSettingStartFinish(!isSettingStartFinish)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    isSettingStartFinish
+                      ? 'bg-yellow-500 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
                 >
-                  Reset to Default
+                  {isSettingStartFinish ? 'Click Map' : 'Move S/F'}
                 </button>
+                {customStartFinish && (
+                  <button
+                    onClick={() => setCustomStartFinish(null)}
+                    className="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              {isSettingStartFinish && (
+                <p className="text-xs text-yellow-400 mt-1">
+                  Click map to set position
+                </p>
               )}
             </div>
-            {isSettingStartFinish && (
-              <p className="text-xs text-yellow-400 mt-1">
-                Click anywhere on the map to set the start/finish line position
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -1170,16 +1123,11 @@ export default function CircuitMap({
         
         {(throttleOverlay || brakeOverlay) && (
           <div className="mt-3 text-xs text-gray-400">
-            <p>25% threshold mapping: Values below 25% of range show as gray trace</p>
-            <p>Visual Mode: {visualMode === 'color' ? 'Color intensity based on input values' : 
-              `Line width based on input values (${widthMultiplier}x multiplier)${
+            <p>Line width visualization (${widthMultiplier}x multiplier)${
                 activeLaps.length > 1 ? ' - Using original lap colors' : ''
-              }`
-            }</p>
+              }</p>
             {throttleOverlay && brakeOverlay && (
-              <p>{visualMode === 'width' && activeLaps.length <= 1 ? 
-                'Brake input takes priority when both throttle and brake are applied' :
-                activeLaps.length > 1 ? 'Line width shows combined throttle/brake intensity per lap' :
+              <p>{activeLaps.length > 1 ? 'Line width shows combined throttle/brake intensity per lap' :
                 'Brake input takes priority when both throttle and brake are applied'
               }</p>
             )}
@@ -1192,8 +1140,8 @@ export default function CircuitMap({
                 <p>Throttle Channel: &quot;{throttleChannel}&quot; {throttleOverlay ? '(ON)' : '(OFF)'}</p>
                 <p>Brake Channel: &quot;{brakeChannel}&quot; {brakeOverlay ? '(ON)' : '(OFF)'}</p>
                 {(throttleOverlay || brakeOverlay) && coloredSegments.length > 0 && (
-                  <p>Overlays Active | Segments: {coloredSegments.length} | Width Multiplier: {widthMultiplier}x | 
-                    {activeLaps.length > 1 ? ` Multi-lap colors: ${visualMode === 'width' ? 'ON' : 'OFF'}` : ' Single lap mode'}
+                  <p>Width Mode Active | Segments: {coloredSegments.length} | Width Multiplier: {widthMultiplier}x | 
+                    {activeLaps.length > 1 ? ` Multi-lap colors: ON` : ' Single lap mode'}
                   </p>
                 )}
               </div>

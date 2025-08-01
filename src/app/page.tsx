@@ -6,6 +6,9 @@ import DataAnalysis from '@/components/DataAnalysis';
 import CircuitMap from '@/components/CircuitMap';
 import LapComparison from '@/components/LapComparison';
 import SessionManager from '@/components/SessionManager';
+import HelpDialog from '@/components/HelpDialog';
+import QuickStartGuide from '@/components/QuickStartGuide';
+import ContextualTips from '@/components/ContextualTips';
 
 export default function Home() {
   const [data, setData] = useState<any[]>([]);
@@ -14,6 +17,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'analysis' | 'map' | 'comparison' | 'sessions'>('analysis');
   const [isLoading, setIsLoading] = useState(true); // Track initial loading state
   const [cachedFileName, setCachedFileName] = useState<string>(''); // Track the cached file name
+  const [showHelp, setShowHelp] = useState(false); // Help dialog state
+  const [showQuickStart, setShowQuickStart] = useState(false); // Quick start guide state
 
   // Cache keys for localStorage
   const CACHE_KEYS = {
@@ -73,6 +78,12 @@ export default function Home() {
         clearCache();
       } finally {
         setIsLoading(false);
+        
+        // Show quick start guide for first-time users (only if no cached data)
+        const hasSeenQuickStart = localStorage.getItem('lap-analyzer-seen-quickstart');
+        if (!hasSeenQuickStart) {
+          setTimeout(() => setShowQuickStart(true), 1000);
+        }
       }
     };
 
@@ -179,6 +190,19 @@ export default function Home() {
     clearCache();
   };
 
+  // Handle quick start guide close
+  const handleQuickStartClose = () => {
+    setShowQuickStart(false);
+    localStorage.setItem('lap-analyzer-seen-quickstart', 'true');
+  };
+
+  // Handle quick start "open help" action
+  const handleQuickStartHelp = () => {
+    setShowQuickStart(false);
+    setShowHelp(true);
+    localStorage.setItem('lap-analyzer-seen-quickstart', 'true');
+  };
+
   const tabs = [
     { id: 'analysis', label: 'Data Analysis', icon: '📊' },
     { id: 'map', label: 'Circuit Map', icon: '🗺️' },
@@ -191,12 +215,23 @@ export default function Home() {
       {/* Header */}
       <header className="bg-black/20 backdrop-blur-sm border-b border-white/10">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <h1 className="text-3xl font-bold text-white">
-            🏁 Race Car Data Analyzer
-          </h1>
-          <p className="text-gray-300 mt-1">
-            Professional telemetry analysis and circuit visualization
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white">
+                🏁 Race Car Data Analyzer
+              </h1>
+              <p className="text-gray-300 mt-1">
+                Professional telemetry analysis and circuit visualization
+              </p>
+            </div>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              <span>❓</span>
+              Help
+            </button>
+          </div>
         </div>
       </header>
 
@@ -205,6 +240,36 @@ export default function Home() {
         {/* File Upload Section */}
         {data.length === 0 && !isLoading && (
           <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-white">Getting Started</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowQuickStart(true)}
+                  className="px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-300 rounded-lg text-sm transition-colors flex items-center gap-2"
+                  title="Show quick start guide"
+                >
+                  <span>🚀</span>
+                  Quick Start
+                </button>
+                <button
+                  onClick={() => setShowHelp(true)}
+                  className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-sm transition-colors flex items-center gap-2"
+                  title="Get help with file upload"
+                >
+                  <span>❓</span>
+                  Help
+                </button>
+              </div>
+            </div>
+            
+            {/* Contextual Tips */}
+            <ContextualTips 
+              currentTab="upload"
+              hasData={false}
+              selectedLap={selectedLap}
+              selectedLaps={selectedLaps}
+            />
+            
             <FileUpload onDataLoad={handleDataLoad} />
           </div>
         )}
@@ -251,26 +316,44 @@ export default function Home() {
         {data.length > 0 && (
           <>
             <div className="mb-6">
-              <div className="flex flex-wrap gap-2 bg-white/5 rounded-lg p-2">
-                {tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      activeTab === tab.id
-                        ? 'bg-red-500 text-white'
-                        : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span>{tab.icon}</span>
-                    {tab.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-white/5 rounded-lg p-2">
+                <div className="flex flex-wrap gap-2">
+                  {tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                        activeTab === tab.id
+                          ? 'bg-red-500 text-white'
+                          : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowHelp(true)}
+                  className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-sm transition-colors flex items-center gap-2"
+                  title={`Get help with ${tabs.find(t => t.id === activeTab)?.label}`}
+                >
+                  <span>❓</span>
+                  Help
+                </button>
               </div>
             </div>
 
             {/* Content Area */}
             <div className="w-full">
+              {/* Contextual Tips */}
+              <ContextualTips 
+                currentTab={activeTab}
+                hasData={data.length > 0}
+                selectedLap={selectedLap}
+                selectedLaps={selectedLaps}
+              />
+              
               {activeTab === 'analysis' && (
                 <DataAnalysis 
                   data={data} 
@@ -305,7 +388,7 @@ export default function Home() {
             {/* Data Status Bar */}
             <div className="mt-6 bg-white/5 rounded-lg p-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <span className="text-green-400 font-medium">
                     📈 {data.length.toLocaleString()} data points loaded
                   </span>
@@ -326,8 +409,19 @@ export default function Home() {
                       🏁 Lap {selectedLap} selected
                     </span>
                   )}
+                  {/* Additional status info */}
+                  <span className="text-gray-400 text-sm">
+                    📊 Tab: {tabs.find(t => t.id === activeTab)?.label}
+                  </span>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowHelp(true)}
+                    className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-sm transition-colors"
+                    title={`Get help with ${tabs.find(t => t.id === activeTab)?.label}`}
+                  >
+                    ❓ Help
+                  </button>
                   {cachedFileName && (
                     <button
                       onClick={handleClearData}
@@ -340,6 +434,7 @@ export default function Home() {
                   <button
                     onClick={handleClearData}
                     className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+                    title="Upload new data file"
                   >
                     Load New Data
                   </button>
@@ -349,6 +444,20 @@ export default function Home() {
           </>
         )}
       </div>
+
+      {/* Help Dialog */}
+      <HelpDialog 
+        isOpen={showHelp} 
+        onClose={() => setShowHelp(false)} 
+        currentTab={data.length === 0 ? 'upload' : activeTab}
+      />
+
+      {/* Quick Start Guide */}
+      <QuickStartGuide
+        isOpen={showQuickStart}
+        onClose={handleQuickStartClose}
+        onOpenHelp={handleQuickStartHelp}
+      />
     </div>
   );
 }

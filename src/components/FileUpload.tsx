@@ -150,17 +150,34 @@ export default function FileUpload({ onDataLoad }: FileUploadProps) {
       )}
 
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-        <h3 className="text-white font-medium mb-2">Expected CSV Format</h3>
-        <p className="text-sm text-gray-300 mb-2">
-          Your CSV file should include columns for:
-        </p>
-        <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
-          <li>Latitude (lat, latitude, etc.)</li>
-          <li>Longitude (lon, lng, longitude, etc.)</li>
-          <li>Timestamp or time data</li>
-          <li>Speed, RPM, throttle position, brake pressure (optional)</li>
-          <li>Any other telemetry data you want to analyze</li>
-        </ul>
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <h3 className="text-white font-medium mb-2 flex items-center gap-2">
+              📋 Expected CSV Format
+              <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">Required</span>
+            </h3>
+            <p className="text-sm text-gray-300 mb-2">
+              Your CSV file should include columns for:
+            </p>
+            <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
+              <li><strong>Latitude</strong> (lat, latitude, etc.) - GPS coordinate</li>
+              <li><strong>Longitude</strong> (lon, lng, longitude, etc.) - GPS coordinate</li>
+              <li>Timestamp or time data (recommended)</li>
+              <li>Speed, RPM, throttle position, brake pressure (optional)</li>
+              <li>Any other telemetry data you want to analyze</li>
+            </ul>
+          </div>
+        </div>
+        
+        {/* Sample CSV example */}
+        <div className="mt-4 p-3 bg-gray-900/50 rounded border border-blue-500/30">
+          <h4 className="text-xs font-medium text-blue-300 mb-2 uppercase tracking-wide">Sample CSV Header</h4>
+          <code className="text-xs text-gray-300 font-mono">
+            timestamp,lat,lon,speed,rpm,throttle,brake<br/>
+            1.0,42.5614,-84.1397,85.2,4500,78.5,0.0<br/>
+            1.1,42.5615,-84.1396,86.1,4520,80.2,0.0
+          </code>
+        </div>
       </div>
     </div>
   );
