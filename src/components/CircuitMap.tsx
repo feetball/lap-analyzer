@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { detectCircuit, detectLaps, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
 
 import { Map as MapIcon, ZoomIn, ZoomOut, RotateCcw, Settings } from 'lucide-react';
 
@@ -75,8 +76,10 @@ if (typeof window !== 'undefined') {
 
 interface CircuitMapProps {
   data: any[];
-  selectedLap: number | null;
-  onLapSelect: (lap: number | null) => void;
+  selectedLap: number | null; // Keep for backward compatibility
+  selectedLaps?: number[]; // New prop for multiple lap selection
+  onLapSelect: (lap: number | null) => void; // Keep for backward compatibility  
+  onLapsSelect?: (laps: number[]) => void; // New callback for multiple lap selection
 }
 
 interface LapPath {
@@ -89,47 +92,32 @@ interface ColoredSegment {
   coordinates: [number, number][];
   color: string;
   opacity: number;
+  width: number;
   throttleValue: number;
   brakeValue: number;
   segmentIndex: number;
+  lapNumber?: number; // Track which lap this segment belongs to
+  lapColor?: string; // Store the original lap color
 }
 
-// Known US racing circuits with start/finish line coordinates
-const KNOWN_CIRCUITS: Record<string, {
-  center: [number, number];
-  startFinish: [[number, number], [number, number]];
-  zoom: number;
-}> = {
-  'Road America': {
-    center: [43.8002, -87.9897] as [number, number],
-    startFinish: [[43.8002, -87.9897], [43.8005, -87.9900]] as [[number, number], [number, number]],
-    zoom: 15,
-  },
-  'Laguna Seca': {
-    center: [36.5844, -121.7536] as [number, number],
-    startFinish: [[36.5844, -121.7536], [36.5847, -121.7539]] as [[number, number], [number, number]],
-    zoom: 15,
-  },
-  'Circuit of the Americas': {
-    center: [30.1328, -97.6411] as [number, number],
-    startFinish: [[30.1328, -97.6411], [30.1331, -97.6414]] as [[number, number], [number, number]],
-    zoom: 15,
-  },
-  'Watkins Glen': {
-    center: [42.3369, -76.9270] as [number, number],
-    startFinish: [[42.3369, -76.9270], [42.3372, -76.9273]] as [[number, number], [number, number]],
-    zoom: 15,
-  },
-};
 
-
-export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMapProps) {
+export default function CircuitMap({ 
+  data, 
+  selectedLap, 
+  selectedLaps = [], 
+  onLapSelect, 
+  onLapsSelect 
+}: CircuitMapProps) {
   const [mapRef, setMapRef] = useState<any>(null);
   const [detectedCircuit, setDetectedCircuit] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [throttleChannel, setThrottleChannel] = useState<string>('');
   const [brakeChannel, setBrakeChannel] = useState<string>('');
-  const [colorMode, setColorMode] = useState<'throttle' | 'brake' | 'both' | 'none'>('none');
+  const [colorMode, setColorMode] = useState<'none' | 'overlay'>('none');
+  const [throttleOverlay, setThrottleOverlay] = useState<boolean>(false);
+  const [brakeOverlay, setBrakeOverlay] = useState<boolean>(false);
+  const [visualMode, setVisualMode] = useState<'color' | 'width'>('color');
+  const [widthMultiplier, setWidthMultiplier] = useState<number>(1.0);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [mapHeight, setMapHeight] = useState(800); // Default to 800px
   const [tileLayer, setTileLayer] = useState<'satellite' | 'street'>('satellite');
@@ -141,6 +129,46 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
     position: [number, number];
     visible: boolean;
   } | null>(null);
+  
+  // Internal state for multiple lap selection
+  const [internalSelectedLaps, setInternalSelectedLaps] = useState<number[]>([]);
+  
+  // Use either provided selectedLaps or internal state
+  const activeLaps = selectedLaps.length > 0 ? selectedLaps : internalSelectedLaps;
+  
+  // Handle multi-lap selection (allows up to 2 laps)
+  const handleLapToggle = (lapNumber: number) => {
+    const newSelectedLaps = [...activeLaps];
+    const lapIndex = newSelectedLaps.indexOf(lapNumber);
+    
+    if (lapIndex >= 0) {
+      // Lap is already selected, remove it
+      newSelectedLaps.splice(lapIndex, 1);
+    } else {
+      // Lap is not selected, add it (max 2 laps)
+      if (newSelectedLaps.length < 2) {
+        newSelectedLaps.push(lapNumber);
+      } else {
+        // Replace the first selected lap with the new one
+        newSelectedLaps.shift();
+        newSelectedLaps.push(lapNumber);
+      }
+    }
+    
+    // Update internal state
+    setInternalSelectedLaps(newSelectedLaps);
+    
+    // Call callbacks for backward compatibility
+    if (onLapsSelect) {
+      onLapsSelect(newSelectedLaps);
+    }
+    
+    // For backward compatibility with single lap selection
+    if (onLapSelect) {
+      onLapSelect(newSelectedLaps.length > 0 ? newSelectedLaps[0] : null);
+    }
+  };
+  
   const leaflet = useLeaflet();
 
   useEffect(() => {
@@ -263,147 +291,255 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
       }
     });
 
-    // Create lap paths (simplified - in reality you'd use start/finish line detection)
-    const lapSize = Math.floor(validCoords.length / 3);
-    const paths: LapPath[] = [];
-    const colors = ['#000000', '#000000', '#000000', '#000000', '#000000']; // All black
+    // Use proper lap detection from raceAnalysis
+    let detectedLaps: Array<{lapNumber: number, startIndex: number, endIndex: number, data: any[]}> = [];
+    
+    // Try to extract GPS keys (reuse existing latKey and lonKey)
+    const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
 
-    for (let i = 0; i < 3; i++) {
-      const startIndex = i * lapSize;
-      const endIndex = Math.min((i + 1) * lapSize, validCoords.length - 1);
-      const lapCoords = validCoords.slice(startIndex, endIndex);
+    if (latKey && lonKey) {
+      // Detect circuit
+      const gpsData = data.map(row => ({ lat: row[latKey], lon: row[lonKey] }));
+      const detectedCircuitName = detectCircuit(gpsData);
+      
+      // Get circuit object if found
+      const circuitObj = detectedCircuitName ? KNOWN_CIRCUITS[detectedCircuitName] : null;
+      
+      // Detect laps using start/finish line
+      detectedLaps = detectLaps(data, circuitObj || null, latKey, lonKey, timeKey);
+    }
+    
+    // Fallback: chunking if no GPS/circuit detected
+    if (detectedLaps.length === 0) {
+      const lapSize = Math.floor(data.length / 3);
+      for (let i = 0; i < 3; i++) {
+        const startIndex = i * lapSize;
+        const endIndex = Math.min((i + 1) * lapSize, data.length - 1);
+        const lapData = data.slice(startIndex, endIndex);
+        if (lapData.length > 0) {
+          detectedLaps.push({
+            lapNumber: i + 1,
+            startIndex,
+            endIndex,
+            data: lapData
+          });
+        }
+      }
+    }
+
+    // Create lap paths from detected laps
+    const paths: LapPath[] = [];
+    // Unique colors for each lap (avoiding green and red)
+    const colors = [
+      '#3B82F6', // Blue
+      '#8B5CF6', // Purple  
+      '#F59E0B', // Amber/Orange
+      '#06B6D4', // Cyan
+      '#EC4899', // Pink
+      '#6366F1', // Indigo
+      '#F97316', // Orange
+      '#A855F7', // Violet
+      '#0EA5E9', // Sky Blue
+      '#F472B6'  // Light Pink
+    ];
+
+    detectedLaps.forEach((lap, i) => {
+      const lapCoords: [number, number][] = [];
+      
+      // Extract coordinates for this lap
+      lap.data.forEach(row => {
+        if (row[latKey] && row[lonKey]) {
+          lapCoords.push([row[latKey], row[lonKey]]);
+        }
+      });
       
       if (lapCoords.length > 0) {
         paths.push({
-          lapNumber: i + 1,
+          lapNumber: lap.lapNumber,
           coordinates: lapCoords,
           color: colors[i % colors.length],
         });
       }
-    }
+    });
 
-    // Create colored segments based on selected channels and color mode
+    // Create colored segments based on selected channels and overlay settings
     const segments: ColoredSegment[] = [];
     
-    if (colorMode !== 'none' && (throttleChannel || brakeChannel)) {
-      const filteredData = data.filter(row => row[latKey] && row[lonKey]);
+    if ((throttleOverlay || brakeOverlay) && (throttleChannel || brakeChannel)) {
+      // Process each selected lap separately to maintain lap colors
+      const lapsToProcess = activeLaps.length > 0 ? activeLaps : detectedLaps.map(lap => lap.lapNumber);
       
-      console.log('Creating segments:', { 
-        colorMode, 
-        throttleChannel, 
-        brakeChannel, 
-        dataLength: filteredData.length,
-        throttleStats: {
-          min: Math.min(...filteredData.map(row => parseFloat(row[throttleChannel]) || 0)),
-          max: Math.max(...filteredData.map(row => parseFloat(row[throttleChannel]) || 0)),
-          avg: (filteredData.reduce((sum, row) => sum + (parseFloat(row[throttleChannel]) || 0), 0) / filteredData.length).toFixed(2)
+      lapsToProcess.forEach(lapNumber => {
+        const lapData = detectedLaps.find(lap => lap.lapNumber === lapNumber);
+        if (!lapData) return;
+        
+        const lapPath = paths.find(path => path.lapNumber === lapNumber);
+        const lapColor = lapPath?.color || '#6b7280';
+        
+        const filteredData = lapData.data.filter(row => row[latKey] && row[lonKey]);
+        if (filteredData.length === 0) return;
+        
+        // Calculate min/max values for this lap
+        let throttleMin = Infinity, throttleMax = -Infinity;
+        let brakeMin = Infinity, brakeMax = -Infinity;
+        
+        if (throttleChannel && throttleOverlay) {
+          const throttleValues = filteredData.map(row => parseFloat(row[throttleChannel]) || 0);
+          throttleMin = Math.min(...throttleValues);
+          throttleMax = Math.max(...throttleValues);
+        }
+        
+        if (brakeChannel && brakeOverlay) {
+          const brakeValues = filteredData.map(row => parseFloat(row[brakeChannel]) || 0);
+          brakeMin = Math.min(...brakeValues);
+          brakeMax = Math.max(...brakeValues);
+        }
+        
+        // Group consecutive points into segments with similar colors
+        const segmentSize = Math.max(1, Math.floor(filteredData.length / 150));
+        
+        for (let i = 0; i < filteredData.length - segmentSize; i += Math.floor(segmentSize / 2)) {
+          const segmentData = filteredData.slice(i, i + segmentSize + 1);
+          const segmentCoords: [number, number][] = segmentData.map(row => [row[latKey], row[lonKey]]);
+          
+          if (segmentCoords.length < 2) continue;
+          
+          // Calculate average values for this segment
+          let throttleValue = 0;
+          let brakeValue = 0;
+          
+          if (throttleChannel && throttleOverlay) {
+            const throttleSum = segmentData.reduce((sum, row) => {
+              const val = parseFloat(row[throttleChannel]) || 0;
+              return sum + val;
+            }, 0);
+            throttleValue = throttleSum / segmentData.length;
+          }
+          
+          if (brakeChannel && brakeOverlay) {
+            const brakeSum = segmentData.reduce((sum, row) => {
+              const val = parseFloat(row[brakeChannel]) || 0;
+              return sum + val;
+            }, 0);
+            brakeValue = brakeSum / segmentData.length;
+          }
+          
+          // Determine color and opacity based on mode
+          let segmentColor = '#6b7280'; // Gray default
+          let opacity = 0.1; // Very low base opacity for neutral
+          
+          // Convert value to opacity using actual data range
+          const getOpacityFromValue = (value: number, min: number, max: number) => {
+            if (isNaN(value) || min === max) return null;
+            
+            // Normalize value to 0-1 range based on actual min/max
+            const normalizedValue = (value - min) / (max - min);
+            
+            // Only show color if normalized value >= 0.25 (25% of the range)
+            if (normalizedValue < 0.25) return null;
+            
+            // Scale opacity from 0.25 to 1.0 based on the normalized value
+            return Math.max(0.25, Math.min(1, normalizedValue));
+          };
+
+          // Convert value to width using actual data range (1px to 15px for dramatic effect)
+          const getWidthFromValue = (value: number, min: number, max: number) => {
+            if (isNaN(value) || min === max) return 2; // Base width
+            
+            // Normalize value to 0-1 range based on actual min/max
+            const normalizedValue = (value - min) / (max - min);
+            
+            // Scale width from 1px to 15px based on the normalized value for dramatic visual difference
+            const baseWidth = Math.max(1, Math.min(15, 1 + (normalizedValue * 14)));
+            
+            // Apply width multiplier
+            return Math.max(1, baseWidth * widthMultiplier);
+          };
+
+          let width = 2; // Default width
+          
+          if (visualMode === 'width') {
+            // In width mode with multiple laps selected, use original lap colors
+            if (activeLaps.length > 1) {
+              segmentColor = lapColor; // Use the lap's original color
+              opacity = 0.8; // High opacity for visibility
+              
+              if (throttleOverlay && !brakeOverlay) {
+                width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+              } else if (brakeOverlay && !throttleOverlay) {
+                width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+              } else if (throttleOverlay && brakeOverlay) {
+                const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+                const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+                // Use the larger width
+                width = Math.max(throttleWidth, brakeWidth);
+              }
+            } else {
+              // Single lap or no laps selected - use original color logic
+              if (throttleOverlay && !brakeOverlay) {
+                width = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+                segmentColor = '#3B82F6'; // Blue for throttle
+                opacity = 0.8;
+              } else if (brakeOverlay && !throttleOverlay) {
+                width = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+                segmentColor = '#F59E0B'; // Orange for brake
+                opacity = 0.8;
+              } else if (throttleOverlay && brakeOverlay) {
+                const throttleWidth = getWidthFromValue(throttleValue, throttleMin, throttleMax);
+                const brakeWidth = getWidthFromValue(brakeValue, brakeMin, brakeMax);
+                
+                if (brakeValue >= throttleValue) {
+                  width = brakeWidth;
+                  segmentColor = '#F59E0B'; // Orange for brake
+                } else {
+                  width = throttleWidth;
+                  segmentColor = '#3B82F6'; // Blue for throttle
+                }
+                opacity = 0.8;
+              }
+            }
+          } else {
+            // Color mode (existing logic)
+            if (throttleOverlay && !brakeOverlay) {
+              const throttleOpacity = getOpacityFromValue(throttleValue, throttleMin, throttleMax);
+              if (throttleOpacity !== null) {
+                segmentColor = '#22c55e'; // Green
+                opacity = throttleOpacity;
+              }
+            } else if (brakeOverlay && !throttleOverlay) {
+              const brakeOpacity = getOpacityFromValue(brakeValue, brakeMin, brakeMax);
+              if (brakeOpacity !== null) {
+                segmentColor = '#ef4444'; // Red
+                opacity = brakeOpacity;
+              }
+            } else if (throttleOverlay && brakeOverlay) {
+              const throttleOpacity = getOpacityFromValue(throttleValue, throttleMin, throttleMax);
+              const brakeOpacity = getOpacityFromValue(brakeValue, brakeMin, brakeMax);
+              
+              // In both mode, brake takes priority when both are >= 25% of their respective ranges
+              if (brakeOpacity !== null && (throttleOpacity === null || brakeValue >= throttleValue)) {
+                segmentColor = '#ef4444'; // Red for brake
+                opacity = brakeOpacity;
+              } else if (throttleOpacity !== null) {
+                segmentColor = '#22c55e'; // Green for throttle
+                opacity = throttleOpacity;
+              }
+            }
+          }
+          
+          segments.push({
+            coordinates: segmentCoords,
+            color: segmentColor,
+            opacity: opacity,
+            width: width,
+            throttleValue: throttleValue,
+            brakeValue: brakeValue,
+            segmentIndex: segments.length,
+            lapNumber: lapNumber,
+            lapColor: lapColor,
+          });
         }
       });
-      
-      // Group consecutive points into segments with similar colors
-      const segmentSize = Math.max(1, Math.floor(filteredData.length / 150)); // Fewer segments for better visibility
-      
-      for (let i = 0; i < filteredData.length - segmentSize; i += Math.floor(segmentSize / 2)) {
-        const segmentData = filteredData.slice(i, i + segmentSize + 1);
-        const segmentCoords: [number, number][] = segmentData.map(row => [row[latKey], row[lonKey]]);
-        
-        if (segmentCoords.length < 2) continue;
-        
-        // Calculate average values for this segment
-        let throttleValue = 0;
-        let brakeValue = 0;
-        
-        if (throttleChannel && (colorMode === 'throttle' || colorMode === 'both')) {
-          const throttleSum = segmentData.reduce((sum, row) => {
-            const val = parseFloat(row[throttleChannel]) || 0;
-            return sum + val;
-          }, 0);
-          throttleValue = throttleSum / segmentData.length;
-        }
-        
-        if (brakeChannel && (colorMode === 'brake' || colorMode === 'both')) {
-          const brakeSum = segmentData.reduce((sum, row) => {
-            const val = parseFloat(row[brakeChannel]) || 0;
-            return sum + val;
-          }, 0);
-          brakeValue = brakeSum / segmentData.length;
-        }
-        
-        // Determine color and opacity based on mode
-        let segmentColor = '#6b7280'; // Gray default
-        let opacity = 0.1; // Very low base opacity for neutral
-        
-        // Convert percentage to opacity and detect scale
-        const getOpacityFromValue = (value: number) => {
-          // Handle both 0-1 and 0-100 scales
-          const percentage = value <= 1 ? value * 100 : value;
-          
-          // Only show color if >= 1%
-          if (percentage < 1) return null;
-          
-          // TRUE 1:1 mapping: 1% = 0.01 opacity, 50% = 0.5 opacity, 100% = 1.0 opacity
-          return Math.max(0.01, Math.min(1, percentage / 100));
-        };
-        
-        if (colorMode === 'throttle') {
-          const throttleOpacity = getOpacityFromValue(throttleValue);
-          if (throttleOpacity !== null) {
-            segmentColor = '#22c55e'; // Green
-            opacity = throttleOpacity;
-          }
-        } else if (colorMode === 'brake') {
-          const brakeOpacity = getOpacityFromValue(brakeValue);
-          if (brakeOpacity !== null) {
-            segmentColor = '#ef4444'; // Red
-            opacity = brakeOpacity;
-          }
-        } else if (colorMode === 'both') {
-          const throttleOpacity = getOpacityFromValue(throttleValue);
-          const brakeOpacity = getOpacityFromValue(brakeValue);
-          
-          // In both mode, brake takes priority when both are >= 10%
-          if (brakeOpacity !== null && (throttleOpacity === null || brakeValue >= throttleValue)) {
-            segmentColor = '#ef4444'; // Red for brake
-            opacity = brakeOpacity;
-          } else if (throttleOpacity !== null) {
-            segmentColor = '#22c55e'; // Green for throttle
-            opacity = throttleOpacity;
-          }
-        }
-        
-        // Add debugging for first few segments
-        if (segments.length < 5) {
-          const throttlePercentage = throttleValue <= 1 ? throttleValue * 100 : throttleValue;
-          const brakePercentage = brakeValue <= 1 ? brakeValue * 100 : brakeValue;
-          
-          console.log(`Segment ${segments.length}:`, {
-            throttlePercentage: throttlePercentage.toFixed(1) + '%',
-            brakePercentage: brakePercentage.toFixed(1) + '%',
-            opacity: opacity.toFixed(3),
-            mode: colorMode
-          });
-        }
-        
-        // Also log some high throttle segments for comparison
-        if (throttleValue > 10 && segments.length % 50 === 0) {
-          const throttlePercentage = throttleValue <= 1 ? throttleValue * 100 : throttleValue;
-          console.log(`HIGH THROTTLE Segment ${segments.length}:`, {
-            throttlePercentage: throttlePercentage.toFixed(1) + '%',
-            opacity: opacity.toFixed(3)
-          });
-        }
-        
-        segments.push({
-          coordinates: segmentCoords,
-          color: segmentColor,
-          opacity: opacity,
-          throttleValue: throttleValue,
-          brakeValue: brakeValue,
-          segmentIndex: segments.length,
-        });
-      }
-      
-      console.log('Created segments:', segments.length);
     }
 
     return {
@@ -412,7 +548,7 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
       lapPaths: paths,
       coloredSegments: segments,
     };
-  }, [data, throttleChannel, brakeChannel, colorMode]);
+  }, [data, throttleChannel, brakeChannel, throttleOverlay, brakeOverlay, visualMode, widthMultiplier, activeLaps]);
 
   // Auto-detect circuit
   useEffect(() => {
@@ -448,10 +584,42 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
   };
 
   const handleReset = () => {
-    if (mapRef && center) {
+    if (mapRef && coordinates.length > 0) {
+      // Calculate bounds for all coordinates
+      const lats = coordinates.map(coord => coord[0]);
+      const lngs = coordinates.map(coord => coord[1]);
+      
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      
+      // Add padding around the track
+      const latPadding = (maxLat - minLat) * 0.1; // 10% padding
+      const lngPadding = (maxLng - minLng) * 0.1; // 10% padding
+      
+      const bounds = [
+        [minLat - latPadding, minLng - lngPadding],
+        [maxLat + latPadding, maxLng + lngPadding]
+      ];
+      
+      // Fit the map to these bounds
+      mapRef.fitBounds(bounds, { padding: [20, 20] });
+    } else if (mapRef && center) {
+      // Fallback to center view
       mapRef.setView(center, detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 15);
     }
   };
+
+  // Auto-fit map when data changes
+  useEffect(() => {
+    if (mapRef && coordinates.length > 0) {
+      // Delay to ensure map is fully rendered
+      setTimeout(() => {
+        handleReset();
+      }, 500);
+    }
+  }, [mapRef, coordinates]);
 
   const getStartFinishPosition = (): [number, number] | null => {
     if (customStartFinish) return customStartFinish;
@@ -576,21 +744,56 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
           
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Color Mode
+              Data Overlays
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Throttle Overlay</span>
+                <button
+                  onClick={() => setThrottleOverlay(!throttleOverlay)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    throttleOverlay
+                      ? 'bg-green-500 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
+                  disabled={!throttleChannel}
+                >
+                  {throttleOverlay ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Brake Overlay</span>
+                <button
+                  onClick={() => setBrakeOverlay(!brakeOverlay)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    brakeOverlay
+                      ? 'bg-red-500 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
+                  disabled={!brakeChannel}
+                >
+                  {brakeOverlay ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Visual Mode
+            </label>
+            <div className="flex flex-wrap gap-2 mb-3">
               {[
-                { value: 'none', label: 'No Color Coding' },
-                { value: 'throttle', label: 'Throttle (Green)' },
-                { value: 'brake', label: 'Brake (Red)' },
-                { value: 'both', label: 'Both (Green/Red)' },
+                { value: 'color', label: 'Color Intensity' },
+                { value: 'width', label: 'Line Width' },
               ].map(mode => (
                 <button
                   key={mode.value}
-                  onClick={() => setColorMode(mode.value as any)}
+                  onClick={() => setVisualMode(mode.value as any)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    colorMode === mode.value
-                      ? 'bg-red-500 text-white'
+                    visualMode === mode.value
+                      ? 'bg-blue-500 text-white'
                       : 'bg-white/10 text-gray-300 hover:bg-white/20'
                   }`}
                 >
@@ -598,6 +801,27 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
                 </button>
               ))}
             </div>
+            
+            {visualMode === 'width' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Line Width Multiplier: {widthMultiplier.toFixed(1)}x
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3.0"
+                  step="0.1"
+                  value={widthMultiplier}
+                  onChange={(e) => setWidthMultiplier(parseFloat(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>0.1x (Thin)</span>
+                  <span>3.0x (Thick)</span>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -679,35 +903,57 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
 
       {/* Lap Selection */}
       <div className="bg-white/5 rounded-lg p-4">
-        <h3 className="text-white font-medium mb-3">Lap Visualization</h3>
+        <h3 className="text-white font-medium mb-3">Lap Comparison (Select up to 2 laps)</h3>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => onLapSelect(null)}
+            onClick={() => {
+              setInternalSelectedLaps([]);
+              if (onLapsSelect) onLapsSelect([]);
+              if (onLapSelect) onLapSelect(null);
+            }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectedLap === null
+              activeLaps.length === 0
                 ? 'bg-red-500 text-white'
                 : 'bg-white/10 text-gray-300 hover:bg-white/20'
             }`}
           >
             All Laps
           </button>
-          {lapPaths.map((lap) => (
-            <button
-              key={lap.lapNumber}
-              onClick={() => onLapSelect(lap.lapNumber)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedLap === lap.lapNumber
-                  ? 'bg-red-500 text-white'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-              style={{
-                borderLeft: `4px solid ${lap.color}`,
-              }}
-            >
-              Lap {lap.lapNumber}
-            </button>
-          ))}
+          {lapPaths.map((lap) => {
+            const isSelected = activeLaps.includes(lap.lapNumber);
+            const selectionIndex = activeLaps.indexOf(lap.lapNumber);
+            
+            return (
+              <button
+                key={lap.lapNumber}
+                onClick={() => handleLapToggle(lap.lapNumber)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors relative ${
+                  isSelected
+                    ? 'bg-red-500 text-white'
+                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                }`}
+                style={{
+                  borderLeft: `4px solid ${lap.color}`,
+                }}
+              >
+                Lap {lap.lapNumber}
+                {isSelected && (
+                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {selectionIndex + 1}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
+        {activeLaps.length > 0 && (
+          <div className="mt-3 text-sm text-gray-400">
+            Selected: {activeLaps.map(lap => `Lap ${lap}`).join(' & ')}
+            {activeLaps.length === 2 && (
+              <span className="text-yellow-400 ml-2">• Click any lap to replace first selection</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Map */}
@@ -719,9 +965,12 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
           {isMounted && (
             <MapContainer
               center={center}
-              zoom={detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 15}
+              zoom={detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 13} // Slightly zoomed out for better initial view
               style={{ height: '100%', width: '100%' }}
               ref={setMapRef}
+              whenReady={() => {
+                // Auto-fit will be handled by the useEffect
+              }}
             >
               {tileLayer === 'satellite' ? (
                 <TileLayer
@@ -735,15 +984,15 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
                 />
               )}
               
-              {/* Show colored segments if color mode is active */}
-              {colorMode !== 'none' && coloredSegments.length > 0 ? (
+              {/* Show colored segments if overlays are active */}
+              {(throttleOverlay || brakeOverlay) && coloredSegments.length > 0 ? (
                 coloredSegments.map((segment, index) => (
                   <Polyline
                     key={`segment-${index}`}
                     positions={segment.coordinates}
                     pathOptions={{
                       color: segment.color,
-                      weight: 5,
+                      weight: segment.width,
                       opacity: segment.opacity,
                       fillOpacity: segment.opacity,
                       stroke: true,
@@ -768,9 +1017,10 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
                   />
                 ))
               ) : (
-                /* Show regular lap paths when no color coding */
+                /* Show regular lap paths when no overlays */
                 lapPaths.map((lap) => {
-                  if (selectedLap !== null && selectedLap !== lap.lapNumber) {
+                  // Show only selected laps if any are selected, otherwise show all
+                  if (activeLaps.length > 0 && !activeLaps.includes(lap.lapNumber)) {
                     return null;
                   }
                   
@@ -780,7 +1030,7 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
                       positions={lap.coordinates}
                       color={lap.color}
                       weight={4}
-                      opacity={selectedLap === null ? 0.7 : 1}
+                      opacity={activeLaps.length === 0 ? 0.7 : 1}
                     />
                   );
                 })
@@ -849,21 +1099,36 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {colorMode === 'none' ? (
-            /* Show lap colors when no color coding */
-            lapPaths.map((lap) => (
-              <div key={lap.lapNumber} className="flex items-center space-x-2">
-                <div
-                  className="w-4 h-4 rounded"
-                  style={{ backgroundColor: lap.color }}
-                ></div>
-                <span className="text-white text-sm">Lap {lap.lapNumber}</span>
-              </div>
-            ))
+          {(!throttleOverlay && !brakeOverlay) ? (
+            /* Show lap colors when no overlays */
+            lapPaths
+              .filter(lap => activeLaps.length === 0 || activeLaps.includes(lap.lapNumber))
+              .map((lap) => {
+                const isSelected = activeLaps.includes(lap.lapNumber);
+                const selectionIndex = activeLaps.indexOf(lap.lapNumber);
+                
+                return (
+                  <div key={lap.lapNumber} className="flex items-center space-x-2">
+                    <div
+                      className="w-4 h-4 rounded relative"
+                      style={{ backgroundColor: lap.color }}
+                    >
+                      {isSelected && (
+                        <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold text-[10px]">
+                          {selectionIndex + 1}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-sm ${isSelected ? 'text-yellow-400 font-semibold' : 'text-white'}`}>
+                      Lap {lap.lapNumber}
+                    </span>
+                  </div>
+                );
+              })
           ) : (
-            /* Show color coding legend */
+            /* Show overlay legend */
             <>
-              {(colorMode === 'throttle' || colorMode === 'both') && throttleChannel && (
+              {throttleOverlay && throttleChannel && (
                 <div className="flex items-center space-x-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-4 bg-green-500 opacity-40 rounded"></div>
@@ -875,7 +1140,7 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
                   </span>
                 </div>
               )}
-              {(colorMode === 'brake' || colorMode === 'both') && brakeChannel && (
+              {brakeOverlay && brakeChannel && (
                 <div className="flex items-center space-x-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-4 bg-red-500 opacity-40 rounded"></div>
@@ -903,23 +1168,33 @@ export default function CircuitMap({ data, selectedLap, onLapSelect }: CircuitMa
           )}
         </div>
         
-        {colorMode !== 'none' && (
+        {(throttleOverlay || brakeOverlay) && (
           <div className="mt-3 text-xs text-gray-400">
-            <p>TRUE 1:1 opacity mapping: 1.5% input = 0.015 opacity, 50% input = 0.5 opacity, 100% input = 1.0 opacity</p>
-            <p>Minimum threshold: 1% (below this shows as gray trace)</p>
-            {colorMode === 'both' && (
-              <p>Brake input takes priority when both throttle and brake are applied</p>
+            <p>25% threshold mapping: Values below 25% of range show as gray trace</p>
+            <p>Visual Mode: {visualMode === 'color' ? 'Color intensity based on input values' : 
+              `Line width based on input values (${widthMultiplier}x multiplier)${
+                activeLaps.length > 1 ? ' - Using original lap colors' : ''
+              }`
+            }</p>
+            {throttleOverlay && brakeOverlay && (
+              <p>{visualMode === 'width' && activeLaps.length <= 1 ? 
+                'Brake input takes priority when both throttle and brake are applied' :
+                activeLaps.length > 1 ? 'Line width shows combined throttle/brake intensity per lap' :
+                'Brake input takes priority when both throttle and brake are applied'
+              }</p>
             )}
             {coloredSegments.length > 0 && (
-              <p>Showing {coloredSegments.length} colored segments</p>
+              <p>Showing {coloredSegments.length} colored segments{activeLaps.length > 1 ? ` across ${activeLaps.length} laps` : ''}</p>
             )}
             {throttleChannel && brakeChannel && (
               <div className="mt-2 p-2 bg-black/20 rounded text-xs">
                 <p>🔍 Debug Info:</p>
-                <p>Throttle Channel: &quot;{throttleChannel}&quot;</p>
-                <p>Brake Channel: &quot;{brakeChannel}&quot;</p>
-                {(colorMode === 'throttle' || colorMode === 'brake' || colorMode === 'both') && coloredSegments.length > 0 && (
-                  <p>Color Mode: {colorMode} | Segments: {coloredSegments.length}</p>
+                <p>Throttle Channel: &quot;{throttleChannel}&quot; {throttleOverlay ? '(ON)' : '(OFF)'}</p>
+                <p>Brake Channel: &quot;{brakeChannel}&quot; {brakeOverlay ? '(ON)' : '(OFF)'}</p>
+                {(throttleOverlay || brakeOverlay) && coloredSegments.length > 0 && (
+                  <p>Overlays Active | Segments: {coloredSegments.length} | Width Multiplier: {widthMultiplier}x | 
+                    {activeLaps.length > 1 ? ` Multi-lap colors: ${visualMode === 'width' ? 'ON' : 'OFF'}` : ' Single lap mode'}
+                  </p>
                 )}
               </div>
             )}

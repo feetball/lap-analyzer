@@ -10,6 +10,7 @@ import SessionManager from '@/components/SessionManager';
 export default function Home() {
   const [data, setData] = useState<any[]>([]);
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
+  const [selectedLaps, setSelectedLaps] = useState<number[]>([]); // For multi-lap selection
   const [activeTab, setActiveTab] = useState<'analysis' | 'map' | 'comparison' | 'sessions'>('analysis');
 
   const tabs = [
@@ -78,7 +79,9 @@ export default function Home() {
                 <CircuitMap 
                   data={data} 
                   selectedLap={selectedLap} 
-                  onLapSelect={setSelectedLap} 
+                  selectedLaps={selectedLaps}
+                  onLapSelect={setSelectedLap}
+                  onLapsSelect={setSelectedLaps}
                 />
               )}
               
@@ -102,7 +105,14 @@ export default function Home() {
                   <span className="text-green-400 font-medium">
                     📈 {data.length.toLocaleString()} data points loaded
                   </span>
-                  {selectedLap && (
+                  {selectedLaps.length > 0 ? (
+                    <span className="text-blue-400">
+                      🏁 {selectedLaps.length === 1 
+                        ? `Lap ${selectedLaps[0]} selected` 
+                        : `Laps ${selectedLaps.join(' & ')} selected for comparison`
+                      }
+                    </span>
+                  ) : selectedLap && (
                     <span className="text-blue-400">
                       🏁 Lap {selectedLap} selected
                     </span>
@@ -112,6 +122,7 @@ export default function Home() {
                   onClick={() => {
                     setData([]);
                     setSelectedLap(null);
+                    setSelectedLaps([]);
                     setActiveTab('analysis');
                   }}
                   className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"

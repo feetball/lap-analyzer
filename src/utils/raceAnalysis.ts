@@ -43,7 +43,7 @@ export const KNOWN_CIRCUITS: Record<string, Circuit> = {
   'Circuit of the Americas': {
     name: 'Circuit of the Americas',
     center: [30.1328, -97.6411],
-    startFinish: [[30.1328, -97.6411], [30.1331, -97.6414]],
+    startFinish: [[30.131811, -97.639923], [30.131950, -97.639791]],
     zoom: 15,
   },
   'Watkins Glen': {

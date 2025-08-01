@@ -1,4 +1,6 @@
+
 'use client';
+import { detectCircuit, detectLaps, LapData, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
 
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
@@ -45,15 +47,7 @@ interface DataAnalysisProps {
   onLapSelect: (lap: number | null) => void;
 }
 
-interface LapData {
-  lapNumber: number;
-  startIndex: number;
-  endIndex: number;
-  lapTime: number;
-  maxSpeed: number;
-  avgSpeed: number;
-  data: any[];
-}
+
 
 
 export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAnalysisProps) {
@@ -70,93 +64,96 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
   // Get available columns from the data
   const availableColumns = useMemo(() => {
     if (!data || data.length === 0) return [];
-    return Object.keys(data[0]).filter(key => 
-      typeof data[0][key] === 'number' && 
-      !key.toLowerCase().includes('lat') && 
-      !key.toLowerCase().includes('lon') &&
-      !key.toLowerCase().includes('lng')
-    );
+    return Object.keys(data[0]).filter(key => {
+      const lowerKey = key.toLowerCase();
+      // Only exclude exact GPS coordinate columns, not named GPS channels
+      const isExactGPSCoord = lowerKey === 'lat' || lowerKey === 'latitude' || 
+                             lowerKey === 'lon' || lowerKey === 'longitude' || 
+                             lowerKey === 'lng';
+      
+      return typeof data[0][key] === 'number' && !isExactGPSCoord;
+    }).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   }, [data]);
 
   // Detect laps based on GPS coordinates
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    // This is a simplified lap detection - in a real implementation,
-    // you'd use the start/finish line coordinates to detect laps
-    const detectedLaps: LapData[] = [];
-    
-    // For demo purposes, let's simulate lap detection by grouping data
-    // In reality, you'd check when the car crosses the start/finish line
-    const lapSize = Math.floor(data.length / 3); // Simulate 3 laps
-    
-    for (let i = 0; i < 3; i++) {
-      const startIndex = i * lapSize;
-      const endIndex = Math.min((i + 1) * lapSize, data.length - 1);
-      const lapData = data.slice(startIndex, endIndex);
-      
-      if (lapData.length > 0) {
-        const speeds = lapData.map(d => d.speed || d.Speed || 0).filter(s => s > 0);
-        const maxSpeed = Math.max(...speeds);
-        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-        
-        // Simulate lap time (in reality, this would be calculated from timestamps)
-        const lapTime = 60 + Math.random() * 30; // 1-1.5 minutes
-        
-        detectedLaps.push({
-          lapNumber: i + 1,
-          startIndex,
-          endIndex,
-          lapTime,
-          maxSpeed,
-          avgSpeed,
-          data: lapData
-        });
-      }
-    }
-    
-    setLaps(detectedLaps);
-    
-    // Calculate best theoretical lap
-    if (detectedLaps.length > 0) {
-      const bestTime = Math.min(...detectedLaps.map(lap => lap.lapTime));
-      setBestTheoreticalLap(bestTime);
-    }
+    let detectedLaps: LapData[] = [];
+    let detectedCircuit: string | null = null;
 
-    // Auto-select default telemetry columns
-    if (selectedColumns.length === 0) {
-      const defaultChannels = [];
-      
-      // Look for TPS (Throttle Position Sensor)
-      const tpsChannel = availableColumns.find(col => 
-        col.toLowerCase().includes('tps') || 
-        col.includes('TPS (%)') ||
-        col.toLowerCase().includes('throttle')
-      );
-      if (tpsChannel) defaultChannels.push(tpsChannel);
-      
-      // Look for Brake Pressure
-      const brakeChannel = availableColumns.find(col => 
-        col.toLowerCase().includes('brake') && col.toLowerCase().includes('pressure') ||
-        col.includes('Brake Pressure (%)')
-      );
-      if (brakeChannel) defaultChannels.push(brakeChannel);
-      
-      // Look for Speed
-      const speedChannel = availableColumns.find(col => 
-        col.toLowerCase().includes('speed') ||
-        col.toLowerCase() === 'spd' ||
-        col.toLowerCase().includes('velocity')
-      );
-      if (speedChannel) defaultChannels.push(speedChannel);
-      
-      // If we couldn't find the specific channels, fall back to first 3
-      if (defaultChannels.length === 0) {
-        defaultChannels.push(...availableColumns.slice(0, 3));
+    // Try to extract GPS keys
+    const latKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('lat'));
+    const lonKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng'));
+    const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
+
+      if (latKey && lonKey) {
+        // Detect circuit
+        const gpsData = data.map(row => ({ lat: row[latKey], lon: row[lonKey] }));
+        detectedCircuit = detectCircuit(gpsData);
+
+        // Get circuit object if found
+        const circuitObj = detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit] : null;
+
+        // Detect laps using start/finish line
+        detectedLaps = detectLaps(data, circuitObj || null, latKey, lonKey, timeKey);
       }
-      
-      setSelectedColumns(defaultChannels);
-    }
+
+      // Fallback: chunking if no GPS/circuit
+      if (detectedLaps.length === 0) {
+        const lapSize = Math.floor(data.length / 3);
+        for (let i = 0; i < 3; i++) {
+          const startIndex = i * lapSize;
+          const endIndex = Math.min((i + 1) * lapSize, data.length - 1);
+          const lapData = data.slice(startIndex, endIndex);
+          if (lapData.length > 0) {
+            detectedLaps.push({
+              lapNumber: i + 1,
+              startIndex,
+              endIndex,
+              lapTime: 0,
+              maxSpeed: 0,
+              avgSpeed: 0,
+              data: lapData
+            });
+          }
+        }
+      }
+
+      setLaps(detectedLaps);
+
+      // Calculate best theoretical lap
+      if (detectedLaps.length > 0) {
+        const bestTime = Math.min(...detectedLaps.map(lap => lap.lapTime));
+        setBestTheoreticalLap(bestTime);
+      }
+
+      // Auto-select default telemetry columns
+      if (selectedColumns.length === 0) {
+        const defaultChannels = [];
+        // ...existing code for channel selection...
+        const tpsChannel = availableColumns.find(col => 
+          col.toLowerCase().includes('tps') || 
+          col.includes('TPS (%)') ||
+          col.toLowerCase().includes('throttle')
+        );
+        if (tpsChannel) defaultChannels.push(tpsChannel);
+        const brakeChannel = availableColumns.find(col => 
+          col.toLowerCase().includes('brake') && col.toLowerCase().includes('pressure') ||
+          col.includes('Brake Pressure (%)')
+        );
+        if (brakeChannel) defaultChannels.push(brakeChannel);
+        const speedChannel = availableColumns.find(col => 
+          col.toLowerCase().includes('speed') ||
+          col.toLowerCase() === 'spd' ||
+          col.toLowerCase().includes('velocity')
+        );
+        if (speedChannel) defaultChannels.push(speedChannel);
+        if (defaultChannels.length === 0) {
+          defaultChannels.push(...availableColumns.slice(0, 3));
+        }
+        setSelectedColumns(defaultChannels);
+      }
   }, [data, availableColumns, selectedColumns.length]);
 
   const chartData = useMemo(() => {
