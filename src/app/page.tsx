@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import FileUpload from '@/components/FileUpload';
 import DataAnalysis from '@/components/DataAnalysis';
 import CircuitMap from '@/components/CircuitMap';
@@ -9,6 +9,16 @@ import SessionManager from '@/components/SessionManager';
 import HelpDialog from '@/components/HelpDialog';
 import QuickStartGuide from '@/components/QuickStartGuide';
 import ContextualTips from '@/components/ContextualTips';
+
+// Cache keys for localStorage (moved outside component to avoid dependency issues)
+const CACHE_KEYS = {
+  DATA: 'lap-analyzer-cached-data',
+  SELECTED_LAP: 'lap-analyzer-selected-lap',
+  SELECTED_LAPS: 'lap-analyzer-selected-laps',
+  ACTIVE_TAB: 'lap-analyzer-active-tab',
+  FILE_NAME: 'lap-analyzer-file-name',
+  TIMESTAMP: 'lap-analyzer-cache-timestamp'
+};
 
 export default function Home() {
   const [data, setData] = useState<any[]>([]);
@@ -20,15 +30,12 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false); // Help dialog state
   const [showQuickStart, setShowQuickStart] = useState(false); // Quick start guide state
 
-  // Cache keys for localStorage
-  const CACHE_KEYS = {
-    DATA: 'lap-analyzer-cached-data',
-    SELECTED_LAP: 'lap-analyzer-selected-lap',
-    SELECTED_LAPS: 'lap-analyzer-selected-laps',
-    ACTIVE_TAB: 'lap-analyzer-active-tab',
-    FILE_NAME: 'lap-analyzer-file-name',
-    TIMESTAMP: 'lap-analyzer-cache-timestamp'
-  };
+  // Clear cache function
+  const clearCache = useCallback(() => {
+    Object.values(CACHE_KEYS).forEach(key => {
+      localStorage.removeItem(key);
+    });
+  }, []);
 
   // Load cached data on component mount
   useEffect(() => {
@@ -88,7 +95,7 @@ export default function Home() {
     };
 
     loadCachedData();
-  }, []);
+  }, [clearCache]);
 
   // Save data to cache when it changes
   useEffect(() => {
@@ -120,7 +127,7 @@ export default function Home() {
         }
       }
     }
-  }, [data, isLoading]);
+  }, [data, isLoading, clearCache]);
 
   // Save other state to cache when it changes
   useEffect(() => {
@@ -162,13 +169,6 @@ export default function Home() {
       console.error('Error getting cache info:', error);
     }
     return null;
-  };
-
-  // Clear cache function
-  const clearCache = () => {
-    Object.values(CACHE_KEYS).forEach(key => {
-      localStorage.removeItem(key);
-    });
   };
 
   // Enhanced data loader that also caches file name
