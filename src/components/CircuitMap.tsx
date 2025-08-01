@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { detectCircuit, detectLaps, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
 
@@ -103,7 +103,6 @@ interface ColoredSegment {
 
 export default function CircuitMap({ 
   data, 
-  selectedLap, 
   selectedLaps = [], 
   onLapSelect, 
   onLapsSelect 
@@ -113,10 +112,8 @@ export default function CircuitMap({
   const [isMounted, setIsMounted] = useState(false);
   const [throttleChannel, setThrottleChannel] = useState<string>('');
   const [brakeChannel, setBrakeChannel] = useState<string>('');
-  const [colorMode, setColorMode] = useState<'none' | 'overlay'>('none');
   const [throttleOverlay, setThrottleOverlay] = useState<boolean>(false);
   const [brakeOverlay, setBrakeOverlay] = useState<boolean>(false);
-  const [visualMode, setVisualMode] = useState<'width'>('width'); // Only width mode now
   const [widthMultiplier, setWidthMultiplier] = useState<number>(1.0);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [mapHeight, setMapHeight] = useState(800); // Default to 800px
@@ -427,20 +424,6 @@ export default function CircuitMap({
           // Determine color and opacity based on mode
           let segmentColor = '#6b7280'; // Gray default
           let opacity = 0.1; // Very low base opacity for neutral
-          
-          // Convert value to opacity using actual data range
-          const getOpacityFromValue = (value: number, min: number, max: number) => {
-            if (isNaN(value) || min === max) return null;
-            
-            // Normalize value to 0-1 range based on actual min/max
-            const normalizedValue = (value - min) / (max - min);
-            
-            // Only show color if normalized value >= 0.25 (25% of the range)
-            if (normalizedValue < 0.25) return null;
-            
-            // Scale opacity from 0.25 to 1.0 based on the normalized value
-            return Math.max(0.25, Math.min(1, normalizedValue));
-          };
 
           // Convert value to width using actual data range (1px to 15px for dramatic effect)
           const getWidthFromValue = (value: number, min: number, max: number) => {
@@ -519,7 +502,7 @@ export default function CircuitMap({
       lapPaths: paths,
       coloredSegments: segments,
     };
-  }, [data, throttleChannel, brakeChannel, throttleOverlay, brakeOverlay, visualMode, widthMultiplier, activeLaps]);
+  }, [data, throttleChannel, brakeChannel, throttleOverlay, brakeOverlay, widthMultiplier, activeLaps]);
 
   // Auto-detect circuit
   useEffect(() => {
@@ -554,7 +537,7 @@ export default function CircuitMap({
     }
   };
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     if (mapRef && coordinates.length > 0) {
       // Calculate bounds for all coordinates
       const lats = coordinates.map(coord => coord[0]);
@@ -580,7 +563,7 @@ export default function CircuitMap({
       // Fallback to center view
       mapRef.setView(center, detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 15);
     }
-  };
+  }, [mapRef, coordinates, center, detectedCircuit]);
 
   // Auto-fit map when data changes
   useEffect(() => {
@@ -590,7 +573,7 @@ export default function CircuitMap({
         handleReset();
       }, 500);
     }
-  }, [mapRef, coordinates]);
+  }, [mapRef, coordinates, handleReset]);
 
   const getStartFinishPosition = (): [number, number] | null => {
     if (customStartFinish) return customStartFinish;

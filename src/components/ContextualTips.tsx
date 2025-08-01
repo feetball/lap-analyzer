@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Lightbulb } from 'lucide-react';
 
 interface ContextualTipsProps {
@@ -14,7 +14,7 @@ export default function ContextualTips({ currentTab, hasData, selectedLap, selec
   const [currentTip, setCurrentTip] = useState<string | null>(null);
   const [dismissedTips, setDismissedTips] = useState<string[]>([]);
 
-  const tips = {
+  const tips = useMemo(() => ({
     upload: [
       {
         id: 'upload-format',
@@ -60,7 +60,7 @@ export default function ContextualTips({ currentTab, hasData, selectedLap, selec
         message: "💡 Tip: Save your current session to analyze it later or compare with future track days. This helps track your progress over time."
       }
     ]
-  };
+  }), [hasData, selectedLap, selectedLaps]);
 
   useEffect(() => {
     const relevantTips = tips[currentTab as keyof typeof tips] || [];
@@ -73,7 +73,7 @@ export default function ContextualTips({ currentTab, hasData, selectedLap, selec
     } else {
       setCurrentTip(null);
     }
-  }, [currentTab, hasData, selectedLap, selectedLaps, dismissedTips]);
+  }, [currentTab, hasData, selectedLap, selectedLaps, dismissedTips, tips]);
 
   const dismissTip = (tipId: string) => {
     const newDismissed = [...dismissedTips, tipId];

@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { X, FileUp, Play, BarChart3, Map } from 'lucide-react';
 
 interface QuickStartGuideProps {

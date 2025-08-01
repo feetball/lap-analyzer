@@ -31,7 +31,7 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
               <ul className="text-gray-300 text-sm mt-2 space-y-1 list-disc list-inside ml-4">
                 <li>AiM data loggers</li>
                 <li>RaceCapture systems</li>
-                <li>Harry's LapTimer exports</li>
+                <li>Harry&apos;s LapTimer exports</li>
                 <li>Custom GPS loggers</li>
               </ul>
             </div>
@@ -64,7 +64,7 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
               <h4 className="font-medium text-blue-300 mb-2">⚡ Upload Methods</h4>
               <ul className="text-gray-300 text-sm space-y-1 list-disc list-inside ml-4">
                 <li><strong>Drag & Drop:</strong> Simply drag your CSV file onto the upload area</li>
-                <li><strong>Browse:</strong> Click "browse" to select a file from your computer</li>
+                <li><strong>Browse:</strong> Click &quot;browse&quot; to select a file from your computer</li>
                 <li><strong>Large Files:</strong> Files up to 50MB are supported for comprehensive session data</li>
               </ul>
             </div>
