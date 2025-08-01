@@ -9,6 +9,7 @@ import SessionManager from '@/components/SessionManager';
 import HelpDialog from '@/components/HelpDialog';
 import QuickStartGuide from '@/components/QuickStartGuide';
 import ContextualTips from '@/components/ContextualTips';
+import Version from '@/components/Version';
 
 // Cache keys for localStorage (moved outside component to avoid dependency issues)
 const CACHE_KEYS = {
@@ -24,7 +25,7 @@ export default function Home() {
   const [data, setData] = useState<any[]>([]);
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
   const [selectedLaps, setSelectedLaps] = useState<number[]>([]); // For multi-lap selection
-  const [activeTab, setActiveTab] = useState<'analysis' | 'map' | 'comparison' | 'sessions'>('analysis');
+  const [activeTab, setActiveTab] = useState<'analysis' | 'map' | 'comparison' | 'sessions'>('comparison');
   const [isLoading, setIsLoading] = useState(true); // Track initial loading state
   const [cachedFileName, setCachedFileName] = useState<string>(''); // Track the cached file name
   const [showHelp, setShowHelp] = useState(false); // Help dialog state
@@ -186,7 +187,7 @@ export default function Home() {
     setSelectedLap(null);
     setSelectedLaps([]);
     setCachedFileName('');
-    setActiveTab('analysis');
+    setActiveTab('comparison');
     clearCache();
   };
 
@@ -204,9 +205,9 @@ export default function Home() {
   };
 
   const tabs = [
-    { id: 'analysis', label: 'Data Analysis', icon: '📊' },
+    { id: 'comparison', label: 'Lap Comparison', icon: '�' },
     { id: 'map', label: 'Circuit Map', icon: '🗺️' },
-    { id: 'comparison', label: 'Lap Comparison', icon: '🔄' },
+    { id: 'analysis', label: 'Data Analysis', icon: '�' },
     { id: 'sessions', label: 'Sessions', icon: '💾' },
   ];
 
@@ -237,11 +238,23 @@ export default function Home() {
 
       {/* Main Container */}
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-        {/* File Upload Section */}
+        {/* Loading State */}
+        {isLoading && (
+          <div className="mb-8 text-center py-12">
+            <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="text-gray-300">
+              {cachedFileName ? `Restoring ${cachedFileName}...` : 'Loading cached data...'}
+            </p>
+          </div>
+        )}
+
+        {/* No Data State - show upload when no data and not loading */}
         {data.length === 0 && !isLoading && (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-white">Getting Started</h2>
+              <h2 className="text-xl font-semibold text-white">
+                {cachedFileName ? 'Cache Failed - Upload New File' : 'Getting Started'}
+              </h2>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowQuickStart(true)}
@@ -262,6 +275,18 @@ export default function Home() {
               </div>
             </div>
             
+            {/* Show cache info if available but failed to load */}
+            {cachedFileName && (
+              <div className="mb-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-yellow-400">⚠️</span>
+                  <span className="text-yellow-300 text-sm">
+                    Previous session <strong>{cachedFileName}</strong> couldn&apos;t be restored. Please upload a new file.
+                  </span>
+                </div>
+              </div>
+            )}
+            
             {/* Contextual Tips */}
             <ContextualTips 
               currentTab="upload"
@@ -271,14 +296,6 @@ export default function Home() {
             />
             
             <FileUpload onDataLoad={handleDataLoad} />
-          </div>
-        )}
-
-        {/* Loading State */}
-        {isLoading && (
-          <div className="mb-8 text-center py-12">
-            <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-gray-300">Loading cached data...</p>
           </div>
         )}
 
@@ -354,11 +371,9 @@ export default function Home() {
                 selectedLaps={selectedLaps}
               />
               
-              {activeTab === 'analysis' && (
-                <DataAnalysis 
+              {activeTab === 'comparison' && (
+                <LapComparison 
                   data={data} 
-                  selectedLap={selectedLap} 
-                  onLapSelect={setSelectedLap} 
                 />
               )}
               
@@ -372,9 +387,11 @@ export default function Home() {
                 />
               )}
               
-              {activeTab === 'comparison' && (
-                <LapComparison 
+              {activeTab === 'analysis' && (
+                <DataAnalysis 
                   data={data} 
+                  selectedLap={selectedLap} 
+                  onLapSelect={setSelectedLap} 
                 />
               )}
               
@@ -458,6 +475,9 @@ export default function Home() {
         onClose={handleQuickStartClose}
         onOpenHelp={handleQuickStartHelp}
       />
+
+      {/* Version */}
+      <Version />
     </div>
   );
 }

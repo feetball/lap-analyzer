@@ -3,6 +3,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { GitCompare, Trophy, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { detectCircuit, detectLaps, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
+import { formatLapTime, formatTimeDifference, detectTimeUnit, normalizeToMilliseconds } from '../utils/timeFormatting';
+import ResizableContainer from './ResizableContainer';
 
 // Dynamically import Chart component to avoid SSR issues
 const Line = dynamic(
@@ -26,44 +29,103 @@ interface LapData {
 }
 
 export default function LapComparison({ data }: LapComparisonProps) {
-  const [selectedLaps, setSelectedLaps] = useState<number[]>([1, 2]);
+  const [selectedLaps, setSelectedLaps] = useState<number[]>([]);
   const [comparisonMetric, setComparisonMetric] = useState<string>('speed');
   const [isMounted, setIsMounted] = useState(false);
+  const [chartWidth, setChartWidth] = useState(800);
+  const [chartHeight, setChartHeight] = useState(400);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Process lap data
+  // Process lap data using proper lap detection
   const laps = useMemo(() => {
     if (!data || data.length === 0) return [];
 
-    const lapSize = Math.floor(data.length / 3);
-    const processedLaps: LapData[] = [];
+    // Find GPS coordinate columns
+    const latKey = Object.keys(data[0]).find(key => 
+      key.toLowerCase().includes('lat') && typeof data[0][key] === 'number'
+    );
+    const lonKey = Object.keys(data[0]).find(key => 
+      (key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng')) && 
+      typeof data[0][key] === 'number'
+    );
+    const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
 
-    for (let i = 0; i < 3; i++) {
-      const startIndex = i * lapSize;
-      const endIndex = Math.min((i + 1) * lapSize, data.length - 1);
-      const lapData = data.slice(startIndex, endIndex);
+    let detectedLaps: Array<{lapNumber: number, startIndex: number, endIndex: number, data: any[]}> = [];
 
-      if (lapData.length > 0) {
-        const speeds = lapData.map(d => d.speed || d.Speed || 0).filter(s => s > 0);
-        const maxSpeed = Math.max(...speeds);
-        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-        const lapTime = 60 + Math.random() * 30; // Simulated lap time
-
-        processedLaps.push({
-          lapNumber: i + 1,
-          data: lapData,
-          lapTime,
-          maxSpeed,
-          avgSpeed,
-        });
+    if (latKey && lonKey) {
+      // Use proper GPS-based lap detection
+      const gpsData = data.map(row => ({ lat: row[latKey], lon: row[lonKey] }));
+      const detectedCircuitName = detectCircuit(gpsData);
+      const circuitObj = detectedCircuitName ? KNOWN_CIRCUITS[detectedCircuitName] : null;
+      
+      detectedLaps = detectLaps(data, circuitObj || null, latKey, lonKey, timeKey);
+    }
+    
+    // Fallback: chunking if no GPS/circuit detected
+    if (detectedLaps.length === 0) {
+      const lapSize = Math.floor(data.length / 3);
+      for (let i = 0; i < 3; i++) {
+        const startIndex = i * lapSize;
+        const endIndex = Math.min((i + 1) * lapSize, data.length - 1);
+        const lapData = data.slice(startIndex, endIndex);
+        if (lapData.length > 0) {
+          detectedLaps.push({
+            lapNumber: i + 1,
+            startIndex,
+            endIndex,
+            data: lapData
+          });
+        }
       }
     }
 
+    // Convert to LapData format with calculated metrics
+    const processedLaps: LapData[] = detectedLaps.map((lap) => {
+      const speeds = lap.data.map(d => d.speed || d.Speed || 0).filter(s => s > 0);
+      const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
+      const avgSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+      
+      // Calculate lap time from timestamps if available
+      let lapTime = 60000 + Math.random() * 30000; // Default simulated time in milliseconds
+      if (timeKey && lap.data.length > 1) {
+        const startTime = lap.data[0][timeKey];
+        const endTime = lap.data[lap.data.length - 1][timeKey];
+        if (typeof startTime === 'number' && typeof endTime === 'number') {
+          lapTime = endTime - startTime;
+        }
+      }
+
+      return {
+        lapNumber: lap.lapNumber,
+        data: lap.data,
+        lapTime,
+        maxSpeed,
+        avgSpeed,
+      };
+    });
+
+    // Detect time unit and normalize all lap times to milliseconds
+    const lapTimes = processedLaps.map(lap => lap.lapTime);
+    const timeUnit = detectTimeUnit(lapTimes);
+    
+    // Normalize lap times to milliseconds
+    processedLaps.forEach(lap => {
+      lap.lapTime = normalizeToMilliseconds(lap.lapTime, timeUnit);
+    });
+
     return processedLaps;
   }, [data]);
+
+  // Auto-select first two laps when lap data changes
+  useEffect(() => {
+    if (laps.length > 0 && selectedLaps.length === 0) {
+      const initialSelection = laps.slice(0, Math.min(2, laps.length)).map(lap => lap.lapNumber);
+      setSelectedLaps(initialSelection);
+    }
+  }, [laps, selectedLaps.length]);
 
   // Available metrics for comparison
   const availableMetrics = useMemo(() => {
@@ -73,7 +135,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
       !key.toLowerCase().includes('lat') &&
       !key.toLowerCase().includes('lon') &&
       !key.toLowerCase().includes('lng')
-    );
+    ).sort(); // Sort metrics alphabetically
   }, [data]);
 
   // Generate comparison chart data
@@ -221,8 +283,8 @@ export default function LapComparison({ data }: LapComparisonProps) {
           <div className="flex items-center space-x-2 text-sm text-green-400">
             <Trophy className="h-4 w-4" />
             <span>
-              Best Theoretical: {bestTheoreticalLap.time.toFixed(3)}s 
-              (-{bestTheoreticalLap.improvement.toFixed(3)}s from Lap {bestTheoreticalLap.baseLap})
+              Best Theoretical: {formatLapTime(bestTheoreticalLap.time)}
+              (-{formatLapTime(bestTheoreticalLap.improvement)} from Lap {bestTheoreticalLap.baseLap})
             </span>
           </div>
         )}
@@ -244,7 +306,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
             >
               Lap {lap.lapNumber}
               <span className="block text-xs opacity-75">
-                {lap.lapTime.toFixed(3)}s
+                {formatLapTime(lap.lapTime)}
               </span>
             </button>
           ))}
@@ -292,7 +354,7 @@ export default function LapComparison({ data }: LapComparisonProps) {
                       Lap {selectedLaps[0]} vs Lap {comp.lapNumber}
                     </td>
                     <td className={`py-2 ${comp.timeDiff > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                      {comp.timeDiff > 0 ? '+' : ''}{comp.timeDiff.toFixed(3)}s
+                      {formatTimeDifference(comp.timeDiff)}
                     </td>
                     <td className={`py-2 ${comp.timeDiff > 0 ? 'text-red-400' : 'text-green-400'}`}>
                       {comp.timeDiff > 0 ? '+' : ''}{comp.percentage.toFixed(2)}%
@@ -326,51 +388,91 @@ export default function LapComparison({ data }: LapComparisonProps) {
       {/* Comparison Chart */}
       {chartData && selectedLaps.length > 0 && isMounted && (
         <div className="bg-white/5 rounded-lg p-4">
-          <div className="h-96">
-            <Line data={chartData} options={chartOptions} />
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-medium">Performance Chart</h3>
+            <div className="text-xs text-gray-400">
+              📏 Drag edges to resize chart
+            </div>
           </div>
+          <ResizableContainer
+            defaultWidth={chartWidth}
+            defaultHeight={chartHeight}
+            minWidth={400}
+            minHeight={250}
+            maxWidth={2400}
+            maxHeight={800}
+            resizeDirection="both"
+            className="bg-white/5 rounded-lg overflow-hidden"
+            onResize={(width, height) => {
+              setChartWidth(width);
+              setChartHeight(height);
+            }}
+          >
+            <div style={{ width: '100%', height: '100%', padding: '16px' }}>
+              <Line data={chartData} options={chartOptions} />
+            </div>
+          </ResizableContainer>
         </div>
       )}
 
       {/* Performance Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {selectedLaps.map((lapNum) => {
-          const lap = laps.find(l => l.lapNumber === lapNum);
-          if (!lap) return null;
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-medium">Performance Summary</h3>
+          <div className="text-xs text-gray-400">
+            📏 Drag bottom edge to resize summary cards
+          </div>
+        </div>
+        <ResizableContainer
+          defaultWidth={800}
+          defaultHeight={200}
+          minWidth={400}
+          minHeight={150}
+          maxWidth={2400}
+          maxHeight={400}
+          resizeDirection="vertical"
+          className="bg-white/5 rounded-lg p-4"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full overflow-y-auto">
+            {selectedLaps.map((lapNum) => {
+              const lap = laps.find(l => l.lapNumber === lapNum);
+              if (!lap) return null;
 
-          const bestLap = laps.reduce((best, current) => 
-            current.lapTime < best.lapTime ? current : best
-          );
+              const bestLap = laps.reduce((best, current) => 
+                current.lapTime < best.lapTime ? current : best
+              );
 
-          return (
-            <div key={lapNum} className="bg-white/5 rounded-lg p-4">
-              <h4 className="text-white font-medium mb-3">Lap {lapNum} Summary</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Lap Time:</span>
-                  <span className={`${lap.lapNumber === bestLap.lapNumber ? 'text-green-400' : 'text-white'}`}>
-                    {lap.lapTime.toFixed(3)}s
-                  </span>
+              return (
+                <div key={lapNum} className="bg-white/10 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-3">Lap {lapNum} Summary</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Lap Time:</span>
+                      <span className={`${lap.lapNumber === bestLap.lapNumber ? 'text-green-400' : 'text-white'}`}>
+                        {formatLapTime(lap.lapTime)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Max Speed:</span>
+                      <span className="text-white">{lap.maxSpeed.toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Avg Speed:</span>
+                      <span className="text-white">{lap.avgSpeed.toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Delta to Best:</span>
+                      <span className={`${lap.lapNumber === bestLap.lapNumber ? 'text-green-400' : 'text-red-400'}`}>
+                        {lap.lapNumber === bestLap.lapNumber ? 'Best' : 
+                         `+${(lap.lapTime - bestLap.lapTime).toFixed(3)}s`}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Max Speed:</span>
-                  <span className="text-white">{lap.maxSpeed.toFixed(1)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Avg Speed:</span>
-                  <span className="text-white">{lap.avgSpeed.toFixed(1)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Delta to Best:</span>
-                  <span className={`${lap.lapNumber === bestLap.lapNumber ? 'text-green-400' : 'text-red-400'}`}>
-                    {lap.lapNumber === bestLap.lapNumber ? 'Best' : 
-                     `+${(lap.lapTime - bestLap.lapTime).toFixed(3)}s`}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </ResizableContainer>
       </div>
     </div>
   );

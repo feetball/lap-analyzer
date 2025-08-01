@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { detectCircuit, detectLaps, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
+import ResizableContainer from './ResizableContainer';
 
 import { Map as MapIcon, ZoomIn, ZoomOut, RotateCcw, Settings } from 'lucide-react';
 
@@ -988,20 +989,36 @@ export default function CircuitMap({
 
       {/* Map */}
       <div className="bg-white/5 rounded-lg p-4">
-        <div 
-          className="rounded-lg overflow-hidden"
-          style={{ height: `${mapHeight}px` }}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-medium">Interactive Circuit Map</h3>
+          <div className="text-xs text-gray-400">
+            📏 Drag edges to resize map
+          </div>
+        </div>
+        <ResizableContainer
+          defaultWidth={800}
+          defaultHeight={mapHeight}
+          minWidth={400}
+          minHeight={300}
+          maxWidth={2400}
+          maxHeight={1000}
+          resizeDirection="both"
+          className="bg-white/10 rounded-lg overflow-hidden"
+          onResize={(width, height) => {
+            setMapHeight(height);
+          }}
         >
-          {isMounted && (
-            <MapContainer
-              center={center}
-              zoom={detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 13} // Slightly zoomed out for better initial view
-              style={{ height: '100%', width: '100%' }}
-              ref={setMapRef}
-              whenReady={() => {
-                // Auto-fit will be handled by the useEffect
-              }}
-            >
+          <div className="w-full h-full">
+            {isMounted && (
+              <MapContainer
+                center={center}
+                zoom={detectedCircuit ? KNOWN_CIRCUITS[detectedCircuit].zoom : 13} // Slightly zoomed out for better initial view
+                style={{ height: '100%', width: '100%' }}
+                ref={setMapRef}
+                whenReady={() => {
+                  // Auto-fit will be handled by the useEffect
+                }}
+              >
               {tileLayer === 'satellite' ? (
                 <TileLayer
                   attribution='&copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
@@ -1186,7 +1203,8 @@ export default function CircuitMap({
               <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full"></div>
             </div>
           )}
-        </div>
+          </div>
+        </ResizableContainer>
       </div>
 
       {/* Legend */}

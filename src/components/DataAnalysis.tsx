@@ -1,6 +1,8 @@
 
 'use client';
 import { detectCircuit, detectLaps, LapData, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
+import { formatLapTime, formatTimeDifference, detectTimeUnit, normalizeToMilliseconds } from '../utils/timeFormatting';
+import ResizableContainer from './ResizableContainer';
 
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
@@ -52,6 +54,8 @@ interface DataAnalysisProps {
 
 export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAnalysisProps) {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [chartWidth, setChartWidth] = useState(800);
+  const [chartHeight, setChartHeight] = useState(400);
   const [laps, setLaps] = useState<LapData[]>([]);
   const [bestTheoreticalLap, setBestTheoreticalLap] = useState<number | null>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -121,6 +125,20 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
       }
 
       setLaps(detectedLaps);
+
+      // Detect time unit and normalize all lap times to milliseconds
+      if (detectedLaps.length > 0) {
+        const lapTimes = detectedLaps.map(lap => lap.lapTime);
+        const timeUnit = detectTimeUnit(lapTimes);
+        
+        // Normalize lap times to milliseconds
+        detectedLaps.forEach(lap => {
+          lap.lapTime = normalizeToMilliseconds(lap.lapTime, timeUnit);
+        });
+        
+        // Update the laps state with normalized times
+        setLaps([...detectedLaps]);
+      }
 
       // Calculate best theoretical lap
       if (detectedLaps.length > 0) {
@@ -272,7 +290,7 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
             >
               Lap {lap.lapNumber}
               <span className="block text-xs opacity-75">
-                {lap.lapTime.toFixed(2)}s
+                {formatLapTime(lap.lapTime)}
               </span>
             </button>
           ))}
@@ -307,9 +325,30 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
       {/* Chart */}
       {chartData && isMounted && chartJS && (
         <div className="bg-white/5 rounded-lg p-4">
-          <div className="h-96">
-            <Line data={chartData} options={chartOptions} />
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-medium">Telemetry Data Chart</h3>
+            <div className="text-xs text-gray-400">
+              📏 Drag edges to resize chart
+            </div>
           </div>
+          <ResizableContainer
+            defaultWidth={chartWidth}
+            defaultHeight={chartHeight}
+            minWidth={400}
+            minHeight={250}
+            maxWidth={2400}
+            maxHeight={800}
+            resizeDirection="both"
+            className="bg-white/5 rounded-lg overflow-hidden"
+            onResize={(width, height) => {
+              setChartWidth(width);
+              setChartHeight(height);
+            }}
+          >
+            <div style={{ width: '100%', height: '100%', padding: '16px' }}>
+              <Line data={chartData} options={chartOptions} />
+            </div>
+          </ResizableContainer>
         </div>
       )}
 
@@ -340,11 +379,11 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
                       onClick={() => onLapSelect(lap.lapNumber)}
                     >
                       <td className="py-2 text-white">{lap.lapNumber}</td>
-                      <td className="py-2 text-white">{lap.lapTime.toFixed(3)}s</td>
+                      <td className="py-2 text-white">{formatLapTime(lap.lapTime)}</td>
                       <td className="py-2 text-white">{lap.maxSpeed.toFixed(1)}</td>
                       <td className="py-2 text-white">{lap.avgSpeed.toFixed(1)}</td>
                       <td className={`py-2 ${delta > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                        {delta > 0 ? '+' : ''}{delta.toFixed(3)}s
+                        {formatTimeDifference(delta)}
                       </td>
                     </tr>
                   );
