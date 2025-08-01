@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HelpCircle, X, FileUp, BarChart3, Map, GitCompare, Database } from 'lucide-react';
 
 interface HelpDialogProps {
@@ -11,6 +11,33 @@ interface HelpDialogProps {
 
 export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogProps) {
   const [activeSection, setActiveSection] = useState(currentTab);
+
+  // Handle escape key and prevent background scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    // Prevent background scroll
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
+  // Handle click outside to close
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -210,6 +237,7 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
                 <li><strong>Pan:</strong> Click and drag to move around</li>
                 <li><strong>Reset View:</strong> Button to return to full track view</li>
                 <li><strong>Layer Toggle:</strong> Switch between satellite and map views</li>
+                <li><strong>Opacity Control:</strong> Adjust transparency when multiple laps are selected</li>
               </ul>
             </div>
 
@@ -237,6 +265,7 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
               <ul className="text-gray-300 text-sm mt-2 space-y-1 list-disc list-inside ml-4">
                 <li>Select multiple laps to overlay racing lines</li>
                 <li>Different colors for each lap</li>
+                <li>Adjust opacity to see through overlapping lines</li>
                 <li>Identify braking and acceleration differences</li>
                 <li>Spot racing line variations between laps</li>
               </ul>
@@ -392,8 +421,13 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl"
+           style={{ zIndex: 10000 }}
+           onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <div className="flex items-center gap-3">
@@ -445,6 +479,8 @@ export default function HelpDialog({ isOpen, onClose, currentTab }: HelpDialogPr
               Need more help? Check the documentation or contact support.
             </div>
             <div className="flex items-center gap-4">
+              <span>Press ESC to close</span>
+              <span>•</span>
               <span>Version 1.0</span>
               <span>•</span>
               <span>Professional Racing Telemetry Tool</span>

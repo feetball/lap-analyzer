@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { X, FileUp, Play, BarChart3, Map } from 'lucide-react';
 
 interface QuickStartGuideProps {
@@ -9,6 +10,33 @@ interface QuickStartGuideProps {
 }
 
 export default function QuickStartGuide({ isOpen, onClose, onOpenHelp }: QuickStartGuideProps) {
+  // Handle escape key and prevent background scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    // Prevent background scroll
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
+  // Handle click outside to close
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   const steps = [
@@ -39,8 +67,13 @@ export default function QuickStartGuide({ isOpen, onClose, onOpenHelp }: QuickSt
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9998] flex items-center justify-center p-4"
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl"
+           style={{ zIndex: 9999 }}
+           onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700 bg-gradient-to-r from-red-600/20 to-blue-600/20">
           <div className="flex items-center gap-3">
@@ -142,12 +175,15 @@ export default function QuickStartGuide({ isOpen, onClose, onOpenHelp }: QuickSt
                 Need more assistance? Check the detailed help guide.
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
-            >
-              Get Started
-            </button>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-400">Press ESC to close</span>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+              >
+                Get Started
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -115,6 +115,7 @@ export default function CircuitMap({
   const [throttleOverlay, setThrottleOverlay] = useState<boolean>(false);
   const [brakeOverlay, setBrakeOverlay] = useState<boolean>(false);
   const [widthMultiplier, setWidthMultiplier] = useState<number>(1.0);
+  const [frontLap, setFrontLap] = useState<number | null>(null); // Which lap to show on top
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [mapHeight, setMapHeight] = useState(800); // Default to 800px
   const [tileLayer, setTileLayer] = useState<'satellite' | 'street'>('satellite');
@@ -141,15 +142,28 @@ export default function CircuitMap({
     if (lapIndex >= 0) {
       // Lap is already selected, remove it
       newSelectedLaps.splice(lapIndex, 1);
+      // Reset front lap if the removed lap was on front
+      if (frontLap === lapNumber) {
+        setFrontLap(null);
+      }
     } else {
       // Lap is not selected, add it (max 2 laps)
       if (newSelectedLaps.length < 2) {
         newSelectedLaps.push(lapNumber);
       } else {
         // Replace the first selected lap with the new one
-        newSelectedLaps.shift();
+        const removedLap = newSelectedLaps.shift();
         newSelectedLaps.push(lapNumber);
+        // Reset front lap if the replaced lap was on front
+        if (frontLap === removedLap) {
+          setFrontLap(null);
+        }
       }
+    }
+    
+    // Reset front lap if it's not in the new selection
+    if (frontLap && !newSelectedLaps.includes(frontLap)) {
+      setFrontLap(null);
     }
     
     // Update internal state
@@ -655,183 +669,262 @@ export default function CircuitMap({
 
       {/* Channel Selector */}
       {showChannelSelector && (
-        <div className="bg-white/5 rounded-lg p-3 space-y-3">
-          <h3 className="text-white font-medium">Settings</h3>
+        <div className="bg-white/5 rounded-lg p-4 space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-semibold text-lg">Map Settings</h3>
+            <button
+              onClick={() => setShowChannelSelector(false)}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
           
-          {/* Left side: Overlays, Right side: Channels */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Data Overlays - Left side */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Data Overlays
-              </label>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">Throttle</span>
+          {/* Data Visualization Section */}
+          <div className="bg-white/5 rounded-lg p-4">
+            <h4 className="text-white font-medium mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+              Data Visualization
+            </h4>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Data Overlays */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-3">
+                    Channel Overlays
+                  </label>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                        <span className="text-sm text-gray-300">Throttle</span>
+                      </div>
+                      <button
+                        onClick={() => setThrottleOverlay(!throttleOverlay)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                          throttleOverlay
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        }`}
+                        disabled={!throttleChannel}
+                      >
+                        {throttleOverlay ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                        <span className="text-sm text-gray-300">Brake</span>
+                      </div>
+                      <button
+                        onClick={() => setBrakeOverlay(!brakeOverlay)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                          brakeOverlay
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        }`}
+                        disabled={!brakeChannel}
+                      >
+                        {brakeOverlay ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Line Width */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Line Width: {widthMultiplier.toFixed(1)}x
+                  </label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="3.0"
+                    step="0.1"
+                    value={widthMultiplier}
+                    onChange={(e) => setWidthMultiplier(parseFloat(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
+                  <div className="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>Thin</span>
+                    <span>Thick</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Channel Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Data Channels
+                </label>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Throttle Channel</label>
+                    <select
+                      value={throttleChannel}
+                      onChange={(e) => setThrottleChannel(e.target.value)}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="">Select throttle channel</option>
+                      {availableChannels.map(channel => (
+                        <option key={channel} value={channel} className="bg-gray-800">
+                          {channel}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Brake Channel</label>
+                    <select
+                      value={brakeChannel}
+                      onChange={(e) => setBrakeChannel(e.target.value)}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="">Select brake channel</option>
+                      {availableChannels.map(channel => (
+                        <option key={channel} value={channel} className="bg-gray-800">
+                          {channel}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Lap Display Order Controls (only show when multiple laps are selected) */}
+          {activeLaps.length > 1 && (
+            <div className="bg-white/5 rounded-lg p-4">
+              <h4 className="text-white font-medium mb-4 flex items-center gap-2">
+                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                Lap Display Order
+              </h4>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  onClick={() => setFrontLap(null)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    frontLap === null
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
+                >
+                  Default Order
+                </button>
+                {activeLaps.map(lapNumber => {
+                  const lapPath = lapPaths.find(lap => lap.lapNumber === lapNumber);
+                  return (
+                    <button
+                      key={lapNumber}
+                      onClick={() => setFrontLap(lapNumber)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        frontLap === lapNumber
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                      style={{ borderLeft: `3px solid ${lapPath?.color || '#6b7280'}` }}
+                    >
+                      Lap {lapNumber}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400">
+                Select which lap trace appears on top when comparing multiple laps
+              </p>
+            </div>
+          )}
+          
+          {/* Map Settings Section */}
+          <div className="bg-white/5 rounded-lg p-4">
+            <h4 className="text-white font-medium mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              Map Configuration
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Map View */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Map Type
+                </label>
+                <div className="flex gap-1">
                   <button
-                    onClick={() => setThrottleOverlay(!throttleOverlay)}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      throttleOverlay
+                    onClick={() => setTileLayer('satellite')}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      tileLayer === 'satellite'
                         ? 'bg-green-500 text-white'
                         : 'bg-white/10 text-gray-300 hover:bg-white/20'
                     }`}
-                    disabled={!throttleChannel}
                   >
-                    {throttleOverlay ? 'ON' : 'OFF'}
+                    🛰️ Satellite
                   </button>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">Brake</span>
                   <button
-                    onClick={() => setBrakeOverlay(!brakeOverlay)}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      brakeOverlay
-                        ? 'bg-red-500 text-white'
+                    onClick={() => setTileLayer('street')}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      tileLayer === 'street'
+                        ? 'bg-green-500 text-white'
                         : 'bg-white/10 text-gray-300 hover:bg-white/20'
                     }`}
-                    disabled={!brakeChannel}
                   >
-                    {brakeOverlay ? 'ON' : 'OFF'}
+                    🗺️ Street
                   </button>
                 </div>
               </div>
-            </div>
-
-            {/* Channel Selection - Right side */}
-            <div className="lg:col-span-2">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Data Channels
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <select
-                    value={throttleChannel}
-                    onChange={(e) => setThrottleChannel(e.target.value)}
-                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
-                  >
-                    <option value="">Select throttle channel</option>
-                    {availableChannels.map(channel => (
-                      <option key={channel} value={channel} className="bg-gray-800">
-                        {channel}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <select
-                    value={brakeChannel}
-                    onChange={(e) => setBrakeChannel(e.target.value)}
-                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
-                  >
-                    <option value="">Select brake channel</option>
-                    {availableChannels.map(channel => (
-                      <option key={channel} value={channel} className="bg-gray-800">
-                        {channel}
-                      </option>
-                    ))}
-                  </select>
+              
+              {/* Map Height */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Height: {mapHeight}px
+                </label>
+                <input
+                  type="range"
+                  min="300"
+                  max="800"
+                  value={mapHeight}
+                  onChange={(e) => setMapHeight(parseInt(e.target.value))}
+                  className="w-full accent-green-500"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>300px</span>
+                  <span>800px</span>
                 </div>
               </div>
-            </div>
-          </div>
-          
-          {/* Line Width Controls */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Line Width Multiplier: {widthMultiplier.toFixed(1)}x
-            </label>
-            <input
-              type="range"
-              min="0.1"
-              max="3.0"
-              step="0.1"
-              value={widthMultiplier}
-              onChange={(e) => setWidthMultiplier(parseFloat(e.target.value))}
-              className="w-full accent-blue-500"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-1">
-              <span>0.1x (Thin)</span>
-              <span>3.0x (Thick)</span>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Map View */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Map View
-              </label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setTileLayer('satellite')}
-                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    tileLayer === 'satellite'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                >
-                  Satellite
-                </button>
-                <button
-                  onClick={() => setTileLayer('street')}
-                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    tileLayer === 'street'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                >
-                  Street
-                </button>
-              </div>
-            </div>
-            
-            {/* Map Height */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Height: {mapHeight}px
-              </label>
-              <input
-                type="range"
-                min="300"
-                max="800"
-                value={mapHeight}
-                onChange={(e) => setMapHeight(parseInt(e.target.value))}
-                className="w-full accent-red-500"
-              />
-            </div>
 
-            {/* Start/Finish Line */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Start/Finish
-              </label>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setIsSettingStartFinish(!isSettingStartFinish)}
-                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    isSettingStartFinish
-                      ? 'bg-yellow-500 text-white'
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }`}
-                >
-                  {isSettingStartFinish ? 'Click Map' : 'Move S/F'}
-                </button>
-                {customStartFinish && (
+              {/* Start/Finish Line */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Start/Finish Line
+                </label>
+                <div className="space-y-1">
                   <button
-                    onClick={() => setCustomStartFinish(null)}
-                    className="px-2 py-1 rounded text-xs font-medium bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                    onClick={() => setIsSettingStartFinish(!isSettingStartFinish)}
+                    className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      isSettingStartFinish
+                        ? 'bg-yellow-500 text-black'
+                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    }`}
                   >
-                    Reset
+                    {isSettingStartFinish ? '📍 Click Map' : '📍 Move S/F'}
                   </button>
+                  {customStartFinish && (
+                    <button
+                      onClick={() => setCustomStartFinish(null)}
+                      className="w-full px-3 py-1 rounded-lg text-xs font-medium bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                    >
+                      Reset to Auto
+                    </button>
+                  )}
+                </div>
+                {isSettingStartFinish && (
+                  <p className="text-xs text-yellow-400 mt-2">
+                    Click anywhere on the map to set position
+                  </p>
                 )}
               </div>
-              {isSettingStartFinish && (
-                <p className="text-xs text-yellow-400 mt-1">
-                  Click map to set position
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -844,6 +937,7 @@ export default function CircuitMap({
           <button
             onClick={() => {
               setInternalSelectedLaps([]);
+              setFrontLap(null); // Reset front lap when showing all laps
               if (onLapsSelect) onLapsSelect([]);
               if (onLapSelect) onLapSelect(null);
             }}
@@ -922,54 +1016,128 @@ export default function CircuitMap({
               
               {/* Show colored segments if overlays are active */}
               {(throttleOverlay || brakeOverlay) && coloredSegments.length > 0 ? (
-                coloredSegments.map((segment, index) => (
-                  <Polyline
-                    key={`segment-${index}`}
-                    positions={segment.coordinates}
-                    pathOptions={{
-                      color: segment.color,
-                      weight: segment.width,
-                      opacity: segment.opacity,
-                      fillOpacity: segment.opacity,
-                      stroke: true,
-                      fillColor: segment.color,
-                    }}
-                    eventHandlers={{
-                      mouseover: (e) => {
-                        const latlng = e.latlng || (e.target.getLatLngs()[0] && e.target.getLatLngs()[0][0]);
-                        if (latlng) {
-                          setHoverData({
-                            throttle: segment.throttleValue,
-                            brake: segment.brakeValue,
-                            position: [latlng.lat, latlng.lng],
-                            visible: true,
-                          });
-                        }
-                      },
-                      mouseout: () => {
-                        setHoverData(null);
-                      },
-                    }}
-                  />
-                ))
+                (() => {
+                  // Apply front lap ordering to colored segments too
+                  const backgroundSegments = coloredSegments.filter(segment => 
+                    frontLap ? segment.lapNumber !== frontLap : true
+                  );
+                  const frontSegments = frontLap ? coloredSegments.filter(segment => 
+                    segment.lapNumber === frontLap
+                  ) : [];
+
+                  return (
+                    <>
+                      {/* Render background segments first */}
+                      {backgroundSegments.map((segment, index) => (
+                        <Polyline
+                          key={`bg-segment-${index}`}
+                          positions={segment.coordinates}
+                          pathOptions={{
+                            color: segment.color,
+                            weight: segment.width,
+                            opacity: segment.opacity * 0.7, // Reduce opacity for background
+                            fillOpacity: segment.opacity * 0.7,
+                            stroke: true,
+                            fillColor: segment.color,
+                          }}
+                          eventHandlers={{
+                            mouseover: (e) => {
+                              const latlng = e.latlng || (e.target.getLatLngs()[0] && e.target.getLatLngs()[0][0]);
+                              if (latlng) {
+                                setHoverData({
+                                  throttle: segment.throttleValue,
+                                  brake: segment.brakeValue,
+                                  position: [latlng.lat, latlng.lng],
+                                  visible: true,
+                                });
+                              }
+                            },
+                            mouseout: () => {
+                              setHoverData(null);
+                            },
+                          }}
+                        />
+                      ))}
+                      
+                      {/* Render front lap segments last (on top) */}
+                      {frontSegments.map((segment, index) => (
+                        <Polyline
+                          key={`front-segment-${index}`}
+                          positions={segment.coordinates}
+                          pathOptions={{
+                            color: segment.color,
+                            weight: segment.width * 1.2, // Make front segments slightly thicker
+                            opacity: segment.opacity,
+                            fillOpacity: segment.opacity,
+                            stroke: true,
+                            fillColor: segment.color,
+                          }}
+                          eventHandlers={{
+                            mouseover: (e) => {
+                              const latlng = e.latlng || (e.target.getLatLngs()[0] && e.target.getLatLngs()[0][0]);
+                              if (latlng) {
+                                setHoverData({
+                                  throttle: segment.throttleValue,
+                                  brake: segment.brakeValue,
+                                  position: [latlng.lat, latlng.lng],
+                                  visible: true,
+                                });
+                              }
+                            },
+                            mouseout: () => {
+                              setHoverData(null);
+                            },
+                          }}
+                        />
+                      ))}
+                    </>
+                  );
+                })()
               ) : (
                 /* Show regular lap paths when no overlays */
-                lapPaths.map((lap) => {
-                  // Show only selected laps if any are selected, otherwise show all
-                  if (activeLaps.length > 0 && !activeLaps.includes(lap.lapNumber)) {
-                    return null;
-                  }
-                  
+                (() => {
+                  // Filter laps based on selection
+                  const lapsToRender = lapPaths.filter(lap => {
+                    if (activeLaps.length > 0 && !activeLaps.includes(lap.lapNumber)) {
+                      return false;
+                    }
+                    return true;
+                  });
+
+                  // Split into background and front lap arrays
+                  const backgroundLaps = lapsToRender.filter(lap => frontLap !== lap.lapNumber);
+                  const frontLapData = frontLap ? lapsToRender.find(lap => lap.lapNumber === frontLap) : null;
+
                   return (
-                    <Polyline
-                      key={lap.lapNumber}
-                      positions={lap.coordinates}
-                      color={lap.color}
-                      weight={4}
-                      opacity={activeLaps.length === 0 ? 0.7 : 1}
-                    />
+                    <>
+                      {/* Render background laps first (underneath) */}
+                      {backgroundLaps.map((lap) => (
+                        <Polyline
+                          key={`bg-lap-${lap.lapNumber}`}
+                          positions={lap.coordinates}
+                          pathOptions={{
+                            color: lap.color,
+                            weight: 4,
+                            opacity: 0.7,
+                          }}
+                        />
+                      ))}
+                      
+                      {/* Render front lap last (on top) if one is selected */}
+                      {frontLapData && (
+                        <Polyline
+                          key={`front-lap-${frontLapData.lapNumber}`}
+                          positions={frontLapData.coordinates}
+                          pathOptions={{
+                            color: frontLapData.color,
+                            weight: 6,
+                            opacity: 0.9,
+                          }}
+                        />
+                      )}
+                    </>
                   );
-                })
+                })()
               )}
 
               {/* Start/Finish line - custom or detected circuit */}
@@ -1042,11 +1210,12 @@ export default function CircuitMap({
               .map((lap) => {
                 const isSelected = activeLaps.includes(lap.lapNumber);
                 const selectionIndex = activeLaps.indexOf(lap.lapNumber);
+                const isOnTop = frontLap === lap.lapNumber;
                 
                 return (
                   <div key={lap.lapNumber} className="flex items-center space-x-2">
                     <div
-                      className="w-4 h-4 rounded relative"
+                      className={`w-4 h-4 rounded relative border-2 ${isOnTop ? 'border-yellow-400' : 'border-transparent'}`}
                       style={{ backgroundColor: lap.color }}
                     >
                       {isSelected && (
@@ -1054,9 +1223,17 @@ export default function CircuitMap({
                           {selectionIndex + 1}
                         </span>
                       )}
+                      {isOnTop && (
+                        <span className="absolute -bottom-1 -left-1 bg-yellow-400 text-black text-xs rounded-full w-3 h-3 flex items-center justify-center font-bold text-[8px]">
+                          ↑
+                        </span>
+                      )}
                     </div>
-                    <span className={`text-sm ${isSelected ? 'text-yellow-400 font-semibold' : 'text-white'}`}>
-                      Lap {lap.lapNumber}
+                    <span className={`text-sm ${
+                      isOnTop ? 'text-yellow-400 font-bold' : 
+                      isSelected ? 'text-yellow-400 font-semibold' : 'text-white'
+                    }`}>
+                      Lap {lap.lapNumber} {isOnTop ? '(Front)' : ''}
                     </span>
                   </div>
                 );
