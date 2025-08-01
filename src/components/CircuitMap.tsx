@@ -119,6 +119,7 @@ export default function CircuitMap({
   const [frontLap, setFrontLap] = useState<number | null>(null); // Which lap to show on top
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [mapHeight, setMapHeight] = useState(800); // Default to 800px
+  const [mapWidth, setMapWidth] = useState(1200); // Default to 1200px for wider maps
   const [tileLayer, setTileLayer] = useState<'satellite' | 'street'>('satellite');
   const [customStartFinish, setCustomStartFinish] = useState<[number, number] | null>(null);
   const [isSettingStartFinish, setIsSettingStartFinish] = useState(false);
@@ -614,6 +615,16 @@ export default function CircuitMap({
     }
   }, [mapRef, isSettingStartFinish]);
 
+  // Invalidate map size when dimensions change
+  useEffect(() => {
+    if (mapRef) {
+      const timer = setTimeout(() => {
+        mapRef.invalidateSize();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [mapRef, mapWidth, mapHeight]);
+
   if (coordinates.length === 0) {
     return (
       <div className="text-center py-12">
@@ -884,14 +895,14 @@ export default function CircuitMap({
                 <input
                   type="range"
                   min="300"
-                  max="800"
+                  max="1000"
                   value={mapHeight}
                   onChange={(e) => setMapHeight(parseInt(e.target.value))}
                   className="w-full accent-green-500"
                 />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                   <span>300px</span>
-                  <span>800px</span>
+                  <span>1000px</span>
                 </div>
               </div>
 
@@ -992,23 +1003,31 @@ export default function CircuitMap({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-medium">Interactive Circuit Map</h3>
           <div className="text-xs text-gray-400">
-            📏 Drag edges to resize map
+            📏 Drag bottom edge to resize height
           </div>
         </div>
         <ResizableContainer
-          defaultWidth={800}
+          defaultWidth={mapWidth}
           defaultHeight={mapHeight}
           minWidth={400}
           minHeight={300}
           maxWidth={2400}
           maxHeight={1000}
           resizeDirection="both"
-          className="bg-white/10 rounded-lg overflow-hidden"
+          className="bg-white/10 rounded-lg w-full"
+          fullWidth={true}
           onResize={(width, height) => {
+            setMapWidth(width);
             setMapHeight(height);
+            // Invalidate map size to reload tiles after resize
+            if (mapRef) {
+              setTimeout(() => {
+                mapRef.invalidateSize();
+              }, 100);
+            }
           }}
         >
-          <div className="w-full h-full">
+          <div className="w-full h-full overflow-hidden rounded-lg">
             {isMounted && (
               <MapContainer
                 center={center}
@@ -1212,7 +1231,7 @@ export default function CircuitMap({
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-white font-medium">Legend</h3>
           <div className="text-sm text-gray-400">
-            <span>{tileLayer === 'satellite' ? '🛰️ Satellite View' : '🗺️ Street View'} • Height: {mapHeight}px</span>
+            <span>{tileLayer === 'satellite' ? '🛰️ Satellite View' : '🗺️ Street View'} • Height: {mapHeight}px (Full Width)</span>
             {hoverData && (
               <div className="mt-1 text-yellow-400 text-xs">
                 🔍 Hover: Throttle {hoverData.throttle.toFixed(1)}% | Brake {hoverData.brake.toFixed(1)}%

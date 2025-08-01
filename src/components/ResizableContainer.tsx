@@ -12,6 +12,7 @@ interface ResizableContainerProps {
   maxHeight?: number;
   resizeDirection?: 'horizontal' | 'vertical' | 'both';
   className?: string;
+  fullWidth?: boolean; // New prop to use 100% width
   onResize?: (width: number, height: number) => void;
 }
 
@@ -25,6 +26,7 @@ export default function ResizableContainer({
   maxHeight,
   resizeDirection = 'both',
   className = '',
+  fullWidth = false,
   onResize,
 }: ResizableContainerProps) {
   const [width, setWidth] = useState(defaultWidth);
@@ -80,11 +82,11 @@ export default function ResizableContainer({
   }, [width, height, onResize, isResizing]);
 
   const containerStyle = {
-    width: resizeDirection === 'vertical' ? '100%' : `${width}px`,
+    width: fullWidth || resizeDirection === 'vertical' ? '100%' : `${width}px`,
     height: resizeDirection === 'horizontal' ? 'auto' : `${height}px`,
-    minWidth: `${minWidth}px`,
+    minWidth: fullWidth ? 'auto' : `${minWidth}px`,
     minHeight: `${minHeight}px`,
-    maxWidth: maxWidth ? `${maxWidth}px` : undefined,
+    maxWidth: fullWidth ? '100%' : (maxWidth ? `${maxWidth}px` : undefined),
     maxHeight: maxHeight ? `${maxHeight}px` : undefined,
     position: 'relative' as const,
   };
@@ -98,30 +100,33 @@ export default function ResizableContainer({
       {children}
       
       {/* Resize Handles */}
-      {(resizeDirection === 'horizontal' || resizeDirection === 'both') && (
+      {!fullWidth && (resizeDirection === 'horizontal' || resizeDirection === 'both') && (
         <div
-          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-500/20 transition-colors group"
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-500/20 transition-colors group z-[9999]"
           onMouseDown={handleMouseDown('width')}
+          style={{ right: '-1px' }}
         >
-          <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gray-400 rounded-full opacity-50 group-hover:opacity-100 transition-opacity" />
         </div>
       )}
       
       {(resizeDirection === 'vertical' || resizeDirection === 'both') && (
         <div
-          className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-500/20 transition-colors group"
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-500/20 transition-colors group z-[9999]"
           onMouseDown={handleMouseDown('height')}
+          style={{ bottom: '-1px' }}
         >
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gray-400 rounded-full opacity-50 group-hover:opacity-100 transition-opacity" />
         </div>
       )}
       
-      {resizeDirection === 'both' && (
+      {!fullWidth && resizeDirection === 'both' && (
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize hover:bg-blue-500/20 transition-colors group"
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize hover:bg-blue-500/20 transition-colors group z-[9999]"
           onMouseDown={handleMouseDown('both')}
+          style={{ bottom: '-1px', right: '-1px' }}
         >
-          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400 opacity-50 group-hover:opacity-100 transition-opacity" />
         </div>
       )}
       
