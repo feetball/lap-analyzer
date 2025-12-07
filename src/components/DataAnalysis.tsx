@@ -1,6 +1,6 @@
 
 'use client';
-import { detectCircuit, detectLaps, LapData, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
+import { detectCircuit, detectLaps, LapData, KNOWN_CIRCUITS, findLatLonKeys } from '../utils/raceAnalysis';
 import { formatLapTime, formatTimeDifference, detectTimeUnit, normalizeToMilliseconds } from '../utils/timeFormatting';
 import ResizableContainer from './ResizableContainer';
 
@@ -68,14 +68,28 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
   // Get available columns from the data
   const availableColumns = useMemo(() => {
     if (!data || data.length === 0) return [];
-    return Object.keys(data[0]).filter(key => {
+    const keys = Object.keys(data[0]);
+    const isNumericColumn = (k: string) => {
+      // Check first up to 20 rows for numbers; ignore null/undefined/empty strings
+      const limit = Math.min(20, data.length);
+      let numericCount = 0;
+      for (let i = 0; i < limit; i++) {
+        const v = (data[i] as any)[k];
+        if (typeof v === 'number' && Number.isFinite(v)) numericCount++;
+        else if (typeof v === 'string') {
+          const num = Number(v);
+          if (!Number.isNaN(num) && Number.isFinite(num)) numericCount++;
+        }
+      }
+      return numericCount >= Math.max(3, Math.ceil(limit * 0.5));
+    };
+
+    return keys.filter(key => {
       const lowerKey = key.toLowerCase();
-      // Only exclude exact GPS coordinate columns, not named GPS channels
-      const isExactGPSCoord = lowerKey === 'lat' || lowerKey === 'latitude' || 
-                             lowerKey === 'lon' || lowerKey === 'longitude' || 
-                             lowerKey === 'lng';
-      
-      return typeof data[0][key] === 'number' && !isExactGPSCoord;
+      const isExactGPSCoord = lowerKey === 'lat' || lowerKey === 'latitude' ||
+                              lowerKey === 'lon' || lowerKey === 'longitude' ||
+                              lowerKey === 'lng';
+      return isNumericColumn(key) && !isExactGPSCoord;
     }).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   }, [data]);
 
@@ -87,9 +101,8 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
     let detectedCircuit: string | null = null;
 
     // Try to extract GPS keys
-    const latKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('lat'));
-    const lonKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng'));
-    const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
+  const { latKey, lonKey } = findLatLonKeys(data);
+  const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
 
       if (latKey && lonKey) {
         // Detect circuit
@@ -185,11 +198,15 @@ export default function DataAnalysis({ data, selectedLap, onLapSelect }: DataAna
       }
     }
 
+    // Sort by time if present to ensure correct ordering
+    const timeKey = Object.keys(dataToShow[0] || {}).find(k => /(^|\s)time($|\s)/i.test(k));
+    const sorted = timeKey ? [...dataToShow].sort((a, b) => Number(a[timeKey]) - Number(b[timeKey])) : dataToShow;
+
     return {
-      labels: dataToShow.map((_, index) => index),
+      labels: sorted.map((_, index) => index),
       datasets: selectedColumns.map((column, index) => ({
         label: column,
-        data: dataToShow.map(row => row[column] || 0),
+        data: sorted.map(row => row[column] || 0),
         borderColor: `hsl(${index * 60}, 70%, 50%)`,
         backgroundColor: `hsla(${index * 60}, 70%, 50%, 0.1)`,
         borderWidth: 2,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { detectCircuit, detectLaps, KNOWN_CIRCUITS } from '../utils/raceAnalysis';
+import { detectCircuit, detectLaps, KNOWN_CIRCUITS, findLatLonKeys } from '../utils/raceAnalysis';
 import ResizableContainer from './ResizableContainer';
 
 import { Map as MapIcon, ZoomIn, ZoomOut, RotateCcw, Settings } from 'lucide-react';
@@ -246,14 +246,8 @@ export default function CircuitMap({
       coloredSegments: []
     };
 
-    // Find latitude and longitude columns
-    const latKey = Object.keys(data[0]).find(key => 
-      key.toLowerCase().includes('lat') && typeof data[0][key] === 'number'
-    );
-    const lonKey = Object.keys(data[0]).find(key => 
-      (key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng')) && 
-      typeof data[0][key] === 'number'
-    );
+  // Find robust latitude and longitude columns
+  const { latKey, lonKey } = findLatLonKeys(data);
 
     if (!latKey || !lonKey) {
       return { 
@@ -264,7 +258,11 @@ export default function CircuitMap({
       };
     }
 
-    const coords: [number, number][] = data
+  // Sort data by time if a monotonic time key exists
+  const timeKey = Object.keys(data[0]).find(k => /(^|\s)time($|\s)/i.test(k));
+  const sorted = timeKey ? [...data].sort((a, b) => Number(a[timeKey]) - Number(b[timeKey])) : data;
+
+  const coords: [number, number][] = sorted
       .filter(row => row[latKey] && row[lonKey])
       .map(row => [row[latKey], row[lonKey]]);
 
@@ -308,18 +306,18 @@ export default function CircuitMap({
     let detectedLaps: Array<{lapNumber: number, startIndex: number, endIndex: number, data: any[]}> = [];
     
     // Try to extract GPS keys (reuse existing latKey and lonKey)
-    const timeKey = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
+  const timeKey2 = Object.keys(data[0]).find(key => key.toLowerCase().includes('time'));
 
     if (latKey && lonKey) {
       // Detect circuit
-      const gpsData = data.map(row => ({ lat: row[latKey], lon: row[lonKey] }));
-      const detectedCircuitName = detectCircuit(gpsData);
+  const gpsData = sorted.map(row => ({ lat: row[latKey], lon: row[lonKey] }));
+  const detectedCircuitName = detectCircuit(gpsData);
       
       // Get circuit object if found
       const circuitObj = detectedCircuitName ? KNOWN_CIRCUITS[detectedCircuitName] : null;
       
       // Detect laps using start/finish line
-      detectedLaps = detectLaps(data, circuitObj || null, latKey, lonKey, timeKey);
+  detectedLaps = detectLaps(sorted, circuitObj || null, latKey, lonKey, timeKey2);
     }
     
     // Fallback: chunking if no GPS/circuit detected
@@ -389,7 +387,7 @@ export default function CircuitMap({
         const lapPath = paths.find(path => path.lapNumber === lapNumber);
         const lapColor = lapPath?.color || '#6b7280';
         
-        const filteredData = lapData.data.filter(row => row[latKey] && row[lonKey]);
+  const filteredData = lapData.data.filter(row => row[latKey] && row[lonKey]);
         if (filteredData.length === 0) return;
         
         // Calculate min/max values for this lap

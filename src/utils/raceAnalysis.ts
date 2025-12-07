@@ -289,17 +289,81 @@ export function calculateBestTheoreticalLap(laps: LapData[]): number | null {
 export function extractGPSCoordinates(data: any[]): Array<{ lat: number; lon: number }> {
   if (!data || data.length === 0) return [];
 
-  const latKey = Object.keys(data[0]).find(key => 
-    key.toLowerCase().includes('lat') && typeof data[0][key] === 'number'
-  );
-  const lonKey = Object.keys(data[0]).find(key => 
-    (key.toLowerCase().includes('lon') || key.toLowerCase().includes('lng')) && 
-    typeof data[0][key] === 'number'
-  );
+  const { latKey, lonKey } = findLatLonKeys(data);
 
   if (!latKey || !lonKey) return [];
 
   return data
     .filter(row => typeof row[latKey] === 'number' && typeof row[lonKey] === 'number')
     .map(row => ({ lat: row[latKey], lon: row[lonKey] }));
+}
+
+/**
+ * Find the best latitude and longitude keys from dataset, avoiding LatAcc/LonAcc.
+ */
+export function findLatLonKeys(data: any[]): { latKey: string | null; lonKey: string | null } {
+  if (!data || data.length === 0) return { latKey: null, lonKey: null };
+  const row = data[0];
+  const keys = Object.keys(row);
+
+  const scoreKey = (key: string, kind: 'lat' | 'lon'): number => {
+    const k = key.toLowerCase();
+    // Disallow acceleration variants
+    if (k.includes('latacc') || k.includes('lonacc')) return -Infinity;
+    // Strong matches
+    if (kind === 'lat') {
+      if (k === 'lat' || k === 'latitude') return 100;
+      if (k === 'gps latitude') return 95;
+      if (/\blatitude\b/.test(k)) return 90;
+      if (/\blat\b/.test(k)) return 80;
+    } else {
+      if (k === 'lon' || k === 'lng' || k === 'longitude') return 100;
+      if (k === 'gps longitude') return 95;
+      if (/\blongitude\b/.test(k)) return 90;
+      if (/\blon\b|\blng\b/.test(k)) return 80;
+    }
+    // Weak generic substrings
+    if (kind === 'lat' && k.includes('lat')) return 10;
+    if (kind === 'lon' && (k.includes('lon') || k.includes('lng'))) return 10;
+    return -1;
+  };
+
+  // Pick top-scoring candidates
+  const latCandidates = keys.map(k => ({ k, s: scoreKey(k, 'lat') }))
+    .filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s);
+  const lonCandidates = keys.map(k => ({ k, s: scoreKey(k, 'lon') }))
+    .filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s);
+
+  let latKey: string | null = latCandidates[0]?.k ?? null;
+  let lonKey: string | null = lonCandidates[0]?.k ?? null;
+
+  // Validate numeric ranges across first N rows; if invalid, try next candidate
+  const validKey = (k: string | null, kind: 'lat' | 'lon') => {
+    if (!k) return false;
+    const limit = Math.min(50, data.length);
+    let count = 0;
+    for (let i = 0; i < limit; i++) {
+      const v = (data[i] as any)[k];
+      const num = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v) : NaN);
+      if (Number.isFinite(num)) {
+        if (kind === 'lat' && num >= -90 && num <= 90) count++;
+        if (kind === 'lon' && num >= -180 && num <= 180) count++;
+      }
+    }
+    return count >= Math.max(5, Math.ceil(limit * 0.5));
+  };
+
+  // Iterate candidates until valid
+  for (const c of latCandidates) {
+    if (validKey(c.k, 'lat')) { latKey = c.k; break; }
+  }
+  for (const c of lonCandidates) {
+    if (validKey(c.k, 'lon')) { lonKey = c.k; break; }
+  }
+
+  // Final sanity: ensure keys differ
+  if (latKey === lonKey) return { latKey: null, lonKey: null };
+  return { latKey, lonKey };
 }

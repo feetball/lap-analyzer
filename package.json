@@ -1,13 +1,13 @@
 {
   "name": "lap-analyzer",
-  "version": "0.2.8",
+  "version": "0.2.10",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-  "test:aim": "ts-node ./scripts/test-aim-parse.ts",
+    "test:aim": "ts-node ./scripts/test-aim-parse.ts",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version"
