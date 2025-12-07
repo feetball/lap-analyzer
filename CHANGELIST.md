@@ -5,6 +5,10 @@
 **Date Range:** August 1, 2025  
 **Total Changes:** 8 files changed, 1,443 insertions(+), 277 deletions(-)
 
+## Security Fix
+
+- **2025-12-05**: Updated React and Next.js to patched versions to mitigate CVE-2025-55182 (React Server Components RCE). Bumped `react` and `react-dom` to 19.1.2 and `next` to 15.4.8; updated `eslint-config-next` to 15.4.8.
+
 ## Summary
 
 This changelist represents the implementation of a comprehensive help system for the Race Car Data Analyzer application, along with build optimizations and React Hook dependency fixes.
